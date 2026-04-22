@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 视频播放按钮图标：实心圆 + 三角播放箭头 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="32dp"
+    android:height="32dp"
+    android:viewportWidth="32"
+    android:viewportHeight="32">
+
+    <!-- 半透明圆形背景 -->
+    <path
+        android:fillColor="#80000000"
+        android:pathData="M16,16m-15,0a15,15 0,1 1,30 0a15,15 0,1 1,-30 0" />
+
+    <!-- 播放三角（偏右居中） -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M13,10.5L22,16L13,21.5Z" />
+
+</vector>

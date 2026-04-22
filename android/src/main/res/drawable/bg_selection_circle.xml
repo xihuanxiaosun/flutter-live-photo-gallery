@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 选中序号圆圈：
+     isSelected=true  → 蓝色实心圆（主色 #0A84FF）
+     isSelected=false → 白色半透明描边空心圆 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item android:state_selected="true">
+        <shape android:shape="oval">
+            <solid android:color="@color/lpg_primary" />
+        </shape>
+    </item>
+
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="#33000000" />
+            <stroke
+                android:width="1.5dp"
+                android:color="#CCFFFFFF" />
+        </shape>
+    </item>
+
+</selector>

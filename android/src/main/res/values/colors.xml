@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="lpg_primary">#0A84FF</color>
+    <color name="lpg_primary_dark">#0070E0</color>
+    <color name="lpg_white">#FFFFFF</color>
+    <color name="lpg_black">#000000</color>
+    <color name="lpg_surface">#FFFFFF</color>
+    <color name="lpg_on_surface">#1C1C1E</color>
+    <!-- 夜间模式覆盖在 values-night/colors.xml -->
+</resources>

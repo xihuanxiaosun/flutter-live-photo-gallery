@@ -1,0 +1,41 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.newtrip.live_photo_gallery">
+
+    <!-- Android 13+ 精细化媒体权限 -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+
+    <!-- Android 12 及以下 -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!-- Android 9 及以下（API ≤ 28）：MediaStore 写入需要此权限 -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <application>
+        <!-- 宫格选图页 -->
+        <activity
+            android:name=".MediaPickerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.LivePhoto"
+            android:windowSoftInputMode="stateHidden|adjustResize" />
+
+        <!-- 资源预览页 -->
+        <activity
+            android:name=".PreviewActivity"
+            android:exported="false"
+            android:theme="@style/Theme.LivePhoto.Preview"
+            android:windowSoftInputMode="stateHidden" />
+
+        <!-- uCrop 裁剪页 -->
+        <activity
+            android:name="com.yalantis.ucrop.UCropActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+    </application>
+
+</manifest>

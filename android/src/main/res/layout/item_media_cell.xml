@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 媒体宫格单元格
+     正方形格子，包含缩略图、选中遮罩、序号圆圈、时长徽章、Live 徽章、视频播放图标 -->
+<com.newtrip.live_photo_gallery.SquareFrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <!-- 缩略图（填满格子，centerCrop） -->
+    <ImageView
+        android:id="@+id/iv_thumbnail"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:contentDescription="媒体缩略图" />
+
+    <!-- 底部渐变：提升徽章可读性 -->
+    <View
+        android:id="@+id/v_bottom_gradient"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:layout_gravity="bottom"
+        android:background="@drawable/bg_bottom_gradient" />
+
+    <!-- 选中半透明遮罩（alpha 由 ObjectAnimator 控制，初始 0） -->
+    <View
+        android:id="@+id/v_selected_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:alpha="0"
+        android:background="#66000000" />
+
+    <!-- 视频播放按钮（居中，仅视频显示） -->
+    <ImageView
+        android:id="@+id/iv_play_icon"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:layout_gravity="center"
+        android:alpha="0.90"
+        android:contentDescription="播放视频"
+        android:src="@drawable/ic_play_circle"
+        android:tint="@color/lpg_white"
+        android:visibility="gone"
+        tools:visibility="visible" />
+
+    <!-- 右上角选中序号圆圈
+         isSelected=true  → 填色主色圆 + 白色数字
+         isSelected=false → 描边白圆 + 空文字 -->
+    <TextView
+        android:id="@+id/tv_selection_number"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="6dp"
+        android:background="@drawable/bg_selection_circle"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:textColor="@color/lpg_white"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        tools:text="1" />
+
+    <!-- 左下角 Live 徽章（仅 Motion Photo 显示） -->
+    <TextView
+        android:id="@+id/tv_live_badge"
+        android:layout_width="wrap_content"
+        android:layout_height="18dp"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="5dp"
+        android:layout_marginBottom="5dp"
+        android:background="@drawable/bg_badge"
+        android:gravity="center"
+        android:paddingHorizontal="5dp"
+        android:text="Live"
+        android:textColor="@color/lpg_white"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <!-- 右下角视频时长徽章 -->
+    <TextView
+        android:id="@+id/tv_duration"
+        android:layout_width="wrap_content"
+        android:layout_height="18dp"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="5dp"
+        android:layout_marginBottom="5dp"
+        android:background="@drawable/bg_badge"
+        android:gravity="center"
+        android:paddingHorizontal="5dp"
+        android:textColor="@color/lpg_white"
+        android:textSize="10sp"
+        android:visibility="gone"
+        tools:text="1:23" />
+
+</com.newtrip.live_photo_gallery.SquareFrameLayout>

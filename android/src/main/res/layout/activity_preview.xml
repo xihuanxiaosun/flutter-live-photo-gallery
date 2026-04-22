@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 预览页：全屏沉浸式，ViewPager2 铺满底层，顶栏/底栏浮在上方 -->
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/transparent">
+
+    <View
+        android:id="@+id/preview_scrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/lpg_black" />
+
+    <FrameLayout
+        android:id="@+id/preview_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <FrameLayout
+            android:id="@+id/preview_stage"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <!-- 全屏 ViewPager2（在底层，延伸到状态栏下方） -->
+            <androidx.viewpager2.widget.ViewPager2
+                android:id="@+id/view_pager"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+        </FrameLayout>
+
+        <!-- 顶部操作栏（半透明黑色背景） -->
+        <FrameLayout
+            android:id="@+id/top_bar"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_gravity="top"
+            android:background="@drawable/bg_top_bar"
+            android:paddingHorizontal="4dp">
+
+            <ImageView
+                android:id="@+id/btn_close"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="start|center_vertical"
+                android:contentDescription="关闭"
+                android:padding="12dp"
+                android:src="@drawable/ic_close"
+                android:tint="@color/lpg_white" />
+
+            <!--
+                paddingEnd=132dp：为右侧"下载按钮(44dp)+选择按钮(~80dp)+间距"留出空间
+                即使下载按钮隐藏时也保持一致，避免文字跳动
+            -->
+            <TextView
+                android:id="@+id/tv_count"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:paddingStart="72dp"
+                android:paddingEnd="132dp"
+                android:textColor="@color/lpg_white"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <!-- 下载/保存按钮：仅当前资产为网络图片时显示（showDownloadButton=true） -->
+            <ImageView
+                android:id="@+id/btn_download"
+                android:layout_width="44dp"
+                android:layout_height="48dp"
+                android:layout_gravity="end|center_vertical"
+                android:layout_marginEnd="84dp"
+                android:contentDescription="保存到相册"
+                android:padding="10dp"
+                android:src="@drawable/ic_download"
+                android:tint="@color/lpg_white"
+                android:visibility="gone" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_select"
+                style="@style/Widget.LivePhoto.Button.Select"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_gravity="end|center_vertical"
+                android:layout_marginEnd="4dp"
+                android:text="选择" />
+
+        </FrameLayout>
+
+        <LinearLayout
+            android:id="@+id/bottom_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:background="@drawable/bg_preview_bottom_bar"
+            android:clipToPadding="false"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="12dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_original"
+                style="@style/Widget.LivePhoto.Button.Original.Preview"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:text="原图"
+                app:icon="@drawable/ic_check_circle"
+                app:iconGravity="start"
+                app:iconPadding="4dp" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_crop"
+                style="@style/Widget.LivePhoto.Button.Original.Preview"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:text="裁剪"
+                android:visibility="gone"
+                app:icon="@android:drawable/ic_menu_crop"
+                app:iconGravity="start"
+                app:iconPadding="4dp" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_done"
+                style="@style/Widget.LivePhoto.Button.Done"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_gravity="center_vertical"
+                android:enabled="false"
+                android:minWidth="80dp"
+                android:text="完成" />
+
+        </LinearLayout>
+    </FrameLayout>
+
+</FrameLayout>

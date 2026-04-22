@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 暗色模式颜色覆盖（对应 values/colors.xml） -->
+<resources>
+    <color name="lpg_primary">#0A84FF</color>
+    <color name="lpg_primary_dark">#0070E0</color>
+    <color name="lpg_white">#FFFFFF</color>
+    <color name="lpg_black">#000000</color>
+    <!-- Surface：对齐 iOS 暗色 groupedBackground #1C1C1E -->
+    <color name="lpg_surface">#1C1C1E</color>
+    <!-- 文字：对齐 iOS 暗色 label #FFFFFF -->
+    <color name="lpg_on_surface">#FFFFFF</color>
+</resources>

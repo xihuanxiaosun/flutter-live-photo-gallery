@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- 选图页主题：Material 3 DayNight，支持暗色模式 -->
+    <style name="Theme.LivePhoto" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/lpg_primary</item>
+        <item name="colorOnPrimary">@color/lpg_white</item>
+        <item name="colorSurface">@color/lpg_surface</item>
+        <item name="colorOnSurface">@color/lpg_on_surface</item>
+        <item name="android:windowBackground">?attr/colorSurface</item>
+    </style>
+
+    <!-- 预览页主题：全屏沉浸式，纯黑背景 -->
+    <style name="Theme.LivePhoto.Preview" parent="Theme.LivePhoto">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+
+    <!-- Toolbar 标题文字样式（Material 3） -->
+    <style name="TextAppearance.LivePhoto.Toolbar" parent="TextAppearance.Material3.TitleLarge">
+        <item name="android:textSize">17sp</item>
+        <item name="android:textStyle">normal</item>
+    </style>
+
+    <!-- 完成按钮：主色填充圆角矩形（Material 3） -->
+    <style name="Widget.LivePhoto.Button.Done" parent="Widget.Material3.Button">
+        <item name="android:textSize">14sp</item>
+        <item name="android:letterSpacing">0</item>
+        <item name="cornerRadius">6dp</item>
+        <item name="android:paddingHorizontal">16dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:minHeight">40dp</item>
+    </style>
+
+    <!-- 原图按钮：无背景文字按钮（Material 3） -->
+    <style name="Widget.LivePhoto.Button.Original" parent="Widget.Material3.Button.TextButton">
+        <item name="android:textSize">14sp</item>
+        <item name="android:letterSpacing">0</item>
+        <item name="android:textColor">?attr/colorOnSurface</item>
+        <item name="iconTint">?attr/colorPrimary</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:minHeight">40dp</item>
+    </style>
+
+    <style name="Widget.LivePhoto.Button.Original.Preview" parent="Widget.Material3.Button.TextButton">
+        <item name="android:textSize">14sp</item>
+        <item name="android:letterSpacing">0</item>
+        <item name="android:textColor">@color/lpg_white</item>
+        <item name="iconTint">@color/lpg_white</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:minHeight">40dp</item>
+    </style>
+
+    <!-- 预览页选择按钮：描边样式（Material 3） -->
+    <style name="Widget.LivePhoto.Button.Select" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:textSize">13sp</item>
+        <item name="android:letterSpacing">0</item>
+        <item name="android:textColor">@color/lpg_white</item>
+        <item name="strokeColor">@color/lpg_white</item>
+        <item name="cornerRadius">6dp</item>
+        <item name="android:paddingHorizontal">12dp</item>
+    </style>
+
+</resources>
