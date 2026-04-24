@@ -100,6 +100,7 @@ class PhotoAssetModel {
     let sourceType: SourceType
     var isSelected: Bool = false
     var editedPath: String?
+    var needsThumbnailRefresh: Bool = false
 
     // MARK: - Computed Properties
 
@@ -274,4 +275,3 @@ struct PickerConfig {
         }
     }
 }
-

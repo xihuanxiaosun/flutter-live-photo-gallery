@@ -160,24 +160,59 @@ class SinglePhotoViewController: UIViewController {
         scrollView.addGestureRecognizer(doubleTap)
     }
     
-    private func loadImage() {
+    func loadImage() {
         // 显示加载指示器
         loadingIndicator.startAnimating()
 
-        // 若当前资源已有裁剪结果，优先展示裁剪后的本地文件
-        if let editedPath = asset.editedPath, !editedPath.isEmpty {
-            loadLocalFileImage(URL(fileURLWithPath: editedPath), mediaType: .image)
+        switch asset.sourceType {
+        case .photoLibrary(let phAsset):
+            asset.editedPath = nil
+            loadPhotoLibraryImage(phAsset)
+        case .network(let url, let mediaType):
+            if let editedURL = existingEditedImageURL() {
+                loadLocalFileImage(editedURL, mediaType: .image)
+                return
+            }
+            loadNetworkImage(url, mediaType: mediaType)
+        case .localFile(let url, let mediaType):
+            if let editedURL = existingEditedImageURL() {
+                loadLocalFileImage(editedURL, mediaType: .image)
+                return
+            }
+            loadLocalFileImage(url, mediaType: mediaType)
+        }
+    }
+
+    func applyEditedImage(_ image: UIImage, animated: Bool = true) {
+        loadingIndicator.stopAnimating()
+        scrollView.setZoomScale(scrollView.minimumZoomScale, animated: false)
+        scrollView.contentOffset = .zero
+
+        let updates = {
+            self.imageView.image = image
+            self.imageView.alpha = 1
+        }
+
+        guard animated, imageView.image != nil else {
+            updates()
             return
         }
 
-        switch asset.sourceType {
-        case .photoLibrary(let phAsset):
-            loadPhotoLibraryImage(phAsset)
-        case .network(let url, let mediaType):
-            loadNetworkImage(url, mediaType: mediaType)
-        case .localFile(let url, let mediaType):
-            loadLocalFileImage(url, mediaType: mediaType)
+        UIView.transition(
+            with: imageView,
+            duration: 0.18,
+            options: [.transitionCrossDissolve, .beginFromCurrentState, .allowAnimatedContent],
+            animations: updates
+        )
+    }
+
+    private func existingEditedImageURL() -> URL? {
+        guard let editedPath = asset.editedPath, !editedPath.isEmpty else { return nil }
+        guard FileManager.default.fileExists(atPath: editedPath) else {
+            asset.editedPath = nil
+            return nil
         }
+        return URL(fileURLWithPath: editedPath)
     }
 
     private func loadPhotoLibraryImage(_ phAsset: PHAsset) {
@@ -192,6 +227,7 @@ class SinglePhotoViewController: UIViewController {
         options.isNetworkAccessAllowed = true
         options.isSynchronous = false
         options.resizeMode = .exact
+        options.version = .current
 
         imageRequestID = PHImageManager.default().requestImage(
             for: phAsset,
@@ -591,6 +627,13 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
     private let config: PickerConfig
     private let completion: ([PhotoAssetModel], Bool) -> Void
 
+    /// The UITransitionView UIKit created for the crop-VC presentation.
+    /// UIKit fails to remove this container when the crop VC is dismissed from
+    /// within a custom-presentation parent (shouldRemovePresentersView = false).
+    /// We capture it on presentation and remove it manually after crop dismisses.
+    /// Accessible from PhotoPreviewPresentationController for race-condition cleanup.
+    var cropPresentationContainer: UIView?
+
     /// 保存网络图片完成后的回调（nil = 不显示下载按钮）
     private let downloadCallback: (([String: Any]) -> Void)?
 
@@ -614,6 +657,8 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
     private var panGesture: UIPanGestureRecognizer!
     private var barToggleTap: UITapGestureRecognizer!
     private var isInteractiveDismissing = false
+    private var barsVisibleBeforeInteractiveDismiss = true
+    private(set) var dismissalBackgroundAlpha: CGFloat = 1.0
     
     // MARK: - Bar State
 
@@ -753,6 +798,7 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
+        dismissalBackgroundAlpha = 1.0
         
         setupPageViewController()
         setupUI()
@@ -939,6 +985,65 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
         let isSelected = selectedAssets.contains(where: { $0.id == asset.id })
         return SinglePhotoViewController(asset: asset, config: config, isSelected: isSelected)
     }
+
+    private func setPreviewBackgroundAlpha(_ alpha: CGFloat) {
+        let clampedAlpha = min(max(alpha, 0), 1)
+        dismissalBackgroundAlpha = clampedAlpha
+        view.backgroundColor = UIColor.black.withAlphaComponent(clampedAlpha)
+    }
+
+    private func setBarsAlpha(_ alpha: CGFloat) {
+        topBar.alpha = alpha
+        if !bottomBar.isHidden {
+            bottomBar.alpha = alpha
+        }
+    }
+
+    private func hideBarsForInteractiveDismiss() {
+        barsVisibleBeforeInteractiveDismiss = barsVisible
+        UIView.animate(
+            withDuration: UIConstants.Animation.fadeInOutDuration,
+            delay: 0,
+            options: [.beginFromCurrentState, .curveEaseOut, .allowUserInteraction]
+        ) {
+            self.setBarsAlpha(0)
+        }
+    }
+
+    private func restoreBarsAfterInteractiveDismiss(animated: Bool) {
+        let targetAlpha: CGFloat = barsVisibleBeforeInteractiveDismiss ? 1 : 0
+        let animations = {
+            self.setBarsAlpha(targetAlpha)
+        }
+
+        guard animated else {
+            animations()
+            return
+        }
+
+        UIView.animate(
+            withDuration: UIConstants.Animation.fadeInOutDuration,
+            delay: 0,
+            options: [.beginFromCurrentState, .curveEaseOut, .allowUserInteraction]
+        ) {
+            animations()
+        }
+    }
+
+    private func dismissProgress(for translationY: CGFloat) -> CGFloat {
+        let normalizedDistance = max(view.bounds.height * 0.85, 1)
+        return min(max(translationY / normalizedDistance, 0), 1)
+    }
+
+    private func interactiveDismissTransform(for translation: CGPoint) -> CGAffineTransform {
+        let verticalTranslation = max(translation.y, 0)
+        let progress = dismissProgress(for: verticalTranslation)
+        let scale = max(0.58, 1.0 - (progress * 0.42))
+        let horizontalTranslation = progress > 0 ? translation.x * 0.98 : 0
+
+        return CGAffineTransform(translationX: horizontalTranslation, y: verticalTranslation)
+            .scaledBy(x: scale, y: scale)
+    }
     
     private func updateUI() {
         // 安全检查
@@ -999,6 +1104,95 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
     @objc private func closeTapped() {
         dismiss(animated: true) {
             self.completion(self.selectedAssets, self.isOriginalPhoto)
+        }
+    }
+
+    /// Restores the preview VC's view to its own UITransitionView and removes the
+    /// orphaned crop-presentation container.
+    ///
+    /// When a `.overFullScreen` VC (crop) is presented from a custom-presentation VC
+    /// (preview, using `shouldRemovePresentersView = false`), UIKit moves the preview
+    /// VC's view INTO the crop's UITransitionView to maintain the visual stack.
+    /// On crop dismiss, UIKit removes the crop container (taking the preview view with
+    /// it), leaving the preview's own UITransitionView empty in the window — which then
+    /// blocks all touch input.
+    ///
+    /// Fix: move the preview view back into its own container, then remove the now-empty
+    /// crop container.
+    private func cleanupOrphanedWindowContainers() {
+        guard let cropContainer = cropPresentationContainer else { return }
+
+        // If our view ended up inside the crop container (UIKit moved it there),
+        // restore it to our own UITransitionView before removing the crop container.
+        if let myContainer = presentationController?.containerView,
+           view.superview === cropContainer {
+            view.frame = myContainer.bounds
+            myContainer.addSubview(view)   // reparents: crop container → preview container
+        }
+
+        cropContainer.removeFromSuperview()
+        cropPresentationContainer = nil
+    }
+
+    private func dismissCropViewController(
+        _ cropViewController: TOCropViewController,
+        completion: (() -> Void)? = nil
+    ) {
+        cropViewController.dismiss(animated: true) { [weak self] in
+            self?.cleanupOrphanedWindowContainers()
+            completion?()
+        }
+    }
+
+    private func clearTemporaryEditedFile(for asset: PhotoAssetModel) {
+        guard let old = asset.editedPath, !old.isEmpty else { return }
+        try? FileManager.default.removeItem(atPath: old)
+        asset.editedPath = nil
+    }
+
+    private func writeTemporaryEditedImage(_ image: UIImage, for asset: PhotoAssetModel) throws {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lpg_crop_\(UUID().uuidString).jpg")
+        guard let data = image.opaque().jpegData(compressionQuality: 0.92) else {
+            throw PhotoLibraryError.exportFailed(
+                underlying: NSError(
+                    domain: "PhotoPreviewPageViewController",
+                    code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: "无法生成裁剪结果"]
+                )
+            )
+        }
+
+        try data.write(to: fileURL, options: .atomic)
+        clearTemporaryEditedFile(for: asset)
+        asset.editedPath = fileURL.path
+        asset.needsThumbnailRefresh = true
+    }
+
+    private func persistCroppedImage(
+        _ image: UIImage,
+        for asset: PhotoAssetModel,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        switch asset.sourceType {
+        case .photoLibrary(let phAsset):
+            PhotoLibraryManager.shared.persistEditedImage(image, for: phAsset) { [weak self] result in
+                switch result {
+                case .success:
+                    self?.clearTemporaryEditedFile(for: asset)
+                    asset.needsThumbnailRefresh = true
+                    completion(.success(()))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        case .network, .localFile:
+            do {
+                try writeTemporaryEditedImage(image, for: asset)
+                completion(.success(()))
+            } catch {
+                completion(.failure(error))
+            }
         }
     }
 
@@ -1208,16 +1402,24 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
             cropVC.aspectRatioLockEnabled = false
             cropVC.resetAspectRatioEnabled = true
             cropVC.rotateButtonsHidden = true
-            cropVC.modalPresentationStyle = .fullScreen
-            self.present(cropVC, animated: true)
+            // Use .overFullScreen to avoid disturbing the underlying .custom presentation's
+            // containerView hierarchy, which would break the dismiss transition.
+            cropVC.modalPresentationStyle = .overFullScreen
+            self.present(cropVC, animated: true) { [weak self, weak cropVC] in
+                // Capture crop's UITransitionView after presentation completes.
+                // UIKit adds cropVC.view to a new UITransitionView (the container).
+                // We need this reference to remove it manually after crop dismisses,
+                // because UIKit's default cleanup is broken in our custom-presentation context.
+                self?.cropPresentationContainer = cropVC?.view.superview
+            }
         }
     }
 
     private func loadCroppableImage(for asset: PhotoAssetModel, completion: @escaping (UIImage?) -> Void) {
-        // 已裁剪结果优先再次编辑
-        if let editedPath = asset.editedPath, !editedPath.isEmpty {
-            completion(UIImage(contentsOfFile: editedPath))
-            return
+        let finishOnMain: (UIImage?) -> Void = { image in
+            DispatchQueue.main.async {
+                completion(image)
+            }
         }
 
         switch asset.sourceType {
@@ -1227,20 +1429,33 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
             options.isNetworkAccessAllowed = true
             options.isSynchronous = false
             options.resizeMode = .none
-            PHImageManager.default().requestImage(
+            options.version = .current
+            PHImageManager.default().requestImageDataAndOrientation(
                 for: phAsset,
-                targetSize: PHImageManagerMaximumSize,
-                contentMode: .aspectFit,
                 options: options
-            ) { image, _ in
-                completion(image)
+            ) { data, _, _, _ in
+                finishOnMain(data.flatMap { UIImage(data: $0) })
             }
         case .network(let url, _):
+            if let editedPath = asset.editedPath,
+               !editedPath.isEmpty,
+               FileManager.default.fileExists(atPath: editedPath) {
+                finishOnMain(UIImage(contentsOfFile: editedPath))
+                return
+            }
+            asset.editedPath = nil
             PhotoLibraryManager.shared.loadNetworkImage(from: url) { result in
-                completion(try? result.get())
+                finishOnMain(try? result.get())
             }
         case .localFile(let url, _):
-            completion(UIImage(contentsOfFile: url.path))
+            if let editedPath = asset.editedPath,
+               !editedPath.isEmpty,
+               FileManager.default.fileExists(atPath: editedPath) {
+                finishOnMain(UIImage(contentsOfFile: editedPath))
+                return
+            }
+            asset.editedPath = nil
+            finishOnMain(UIImage(contentsOfFile: url.path))
         }
     }
 
@@ -1253,44 +1468,30 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
         _ = cropRect
         _ = angle
         guard currentIndex >= 0, currentIndex < allAssets.count else {
-            cropViewController.dismiss(animated: true)
+            dismissCropViewController(cropViewController)
             return
         }
 
         let asset = allAssets[currentIndex]
-        let fileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("lpg_crop_\(UUID().uuidString).jpg")
-        guard let data = image.opaque().jpegData(compressionQuality: 0.92) else {
-            cropViewController.dismiss(animated: true) { [weak self] in
-                self?.showAlert(message: "裁剪结果保存失败")
-            }
-            return
-        }
-
-        do {
-            try data.write(to: fileURL, options: .atomic)
-            if let old = asset.editedPath, !old.isEmpty {
-                try? FileManager.default.removeItem(atPath: old)
-            }
-            asset.editedPath = fileURL.path
-        } catch {
-            cropViewController.dismiss(animated: true) { [weak self] in
-                self?.showAlert(message: "裁剪结果写入失败")
-            }
-            return
-        }
-
-        cropViewController.dismiss(animated: true) { [weak self] in
+        persistCroppedImage(image, for: asset) { [weak self] result in
             guard let self else { return }
-            self.currentPhotoVC?.asset.editedPath = asset.editedPath
-            self.currentPhotoVC?.viewWillAppear(false)
-            self.showSaveToast("裁剪完成")
+            switch result {
+            case .success:
+                self.currentPhotoVC?.applyEditedImage(image, animated: false)
+                self.dismissCropViewController(cropViewController) {
+                    self.showSaveToast("裁剪完成")
+                }
+            case .failure(let error):
+                self.dismissCropViewController(cropViewController) { [weak self] in
+                    self?.showAlert(message: error.localizedDescription)
+                }
+            }
         }
     }
 
     func cropViewController(_ cropViewController: TOCropViewController, didFinishCancelled cancelled: Bool) {
         _ = cancelled
-        cropViewController.dismiss(animated: true)
+        dismissCropViewController(cropViewController)
     }
 
     @objc private func handleBarToggleTap(_ gesture: UITapGestureRecognizer) {
@@ -1302,11 +1503,7 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
 
         barsVisible.toggle()
         UIView.animate(withDuration: UIConstants.Animation.fadeInOutDuration) {
-            self.topBar.alpha = self.barsVisible ? 1 : 0
-            // 纯预览模式下 bottomBar 已隐藏，不参与动画
-            if !self.bottomBar.isHidden {
-                self.bottomBar.alpha = self.barsVisible ? 1 : 0
-            }
+            self.setBarsAlpha(self.barsVisible ? 1 : 0)
         }
     }
     
@@ -1387,7 +1584,8 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         let translation = gesture.translation(in: view)
         let velocity = gesture.velocity(in: view)
-        let progress = min(max(translation.y / view.bounds.height, 0), 1.0)
+        let verticalTranslation = max(translation.y, 0)
+        let progress = dismissProgress(for: verticalTranslation)
 
         switch gesture.state {
         case .began:
@@ -1401,28 +1599,13 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
 
             // 禁用 PageViewController 的滚动，防止左右切换
             pageViewController.dataSource = nil
+            hideBarsForInteractiveDismiss()
 
         case .changed:
             guard isInteractiveDismissing else { return }
 
-            if translation.y > 0 {
-                // 图片缩放效果（更平滑）
-                let scale = 1.0 - (progress * 0.2)
-
-                // 背景透明度（平滑渐变，使用缓动函数）
-                let alpha = CGFloat(pow(1.0 - Double(progress), 1.5))
-                view.backgroundColor = UIColor.black.withAlphaComponent(alpha)
-
-                // 图片变换（支持上下左右移动）
-                pageViewController.view.transform = CGAffineTransform(scaleX: scale, y: scale)
-                    .translatedBy(x: translation.x, y: translation.y)
-
-                // 顶部栏淡出；纯预览模式下 bottomBar 已隐藏，不参与动画
-                let barAlpha = CGFloat(pow(1.0 - Double(progress), 2.0))
-                topBar.alpha = barAlpha
-                if !bottomBar.isHidden { bottomBar.alpha = barAlpha }
-                barsVisible = barAlpha > 0.5
-            }
+            pageViewController.view.transform = interactiveDismissTransform(for: translation)
+            setPreviewBackgroundAlpha(1.0 - progress)
 
         case .ended, .cancelled:
             guard isInteractiveDismissing else { return }
@@ -1430,12 +1613,6 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
             let shouldDismiss = progress > UIConstants.Preview.dismissProgressThreshold || velocity.y > UIConstants.Preview.dismissVelocityThreshold
 
             if shouldDismiss {
-                // 直接从当前位置关闭，不重置 transform
-                self.view.backgroundColor = .clear
-                self.topBar.alpha = 0
-                if !self.bottomBar.isHidden { self.bottomBar.alpha = 0 }
-
-                // 使用自定义转场动画关闭
                 self.dismiss(animated: true) {
                     self.completion(self.selectedAssets, self.isOriginalPhoto)
                 }
@@ -1448,10 +1625,9 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
                     initialSpringVelocity: abs(velocity.y) / 1000,
                     options: [.curveEaseOut, .allowUserInteraction]
                 ) {
-                    self.view.backgroundColor = .black
+                    self.setPreviewBackgroundAlpha(1.0)
                     self.pageViewController.view.transform = .identity
-                    self.topBar.alpha = 1.0
-                    if !self.bottomBar.isHidden { self.bottomBar.alpha = 1.0 }
+                    self.restoreBarsAfterInteractiveDismiss(animated: false)
                 }
 
                 // 恢复 PageViewController 的滚动

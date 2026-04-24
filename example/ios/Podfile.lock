@@ -1,0 +1,29 @@
+PODS:
+  - Flutter (1.0.0)
+  - live_photo_gallery (0.1.0):
+    - Flutter
+    - TOCropViewController (~> 3.1)
+  - TOCropViewController (3.1.2)
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - live_photo_gallery (from `.symlinks/plugins/live_photo_gallery/ios`)
+
+SPEC REPOS:
+  trunk:
+    - TOCropViewController
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  live_photo_gallery:
+    :path: ".symlinks/plugins/live_photo_gallery/ios"
+
+SPEC CHECKSUMS:
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  live_photo_gallery: 13ea6e48d182dc2cec20e4d86e85a2b24184763a
+  TOCropViewController: a916930c465b5d9445a74d95e0c0da931771b4df
+
+PODFILE CHECKSUM: ce2a4dd764e1c7aeed6a7cdc5e61d092b6dc6d32
+
+COCOAPODS: 1.16.2

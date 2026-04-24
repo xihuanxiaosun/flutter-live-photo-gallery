@@ -146,6 +146,7 @@ class PhotoLibraryManager: PhotoLibraryManaging {
         options.deliveryMode = .opportunistic
         options.isNetworkAccessAllowed = true
         options.isSynchronous = false
+        options.version = .current
 
         return imageManager.requestImage(for: asset, targetSize: size, contentMode: .aspectFill, options: options) { image, info in
             // .opportunistic 会触发两次回调：先降级模糊图，再清晰图。
@@ -205,6 +206,7 @@ class PhotoLibraryManager: PhotoLibraryManaging {
         options.isNetworkAccessAllowed = true
         options.isSynchronous = false
         options.resizeMode = .exact
+        options.version = .current
 
         imageManager.requestImage(
             for: asset,
@@ -236,6 +238,80 @@ class PhotoLibraryManager: PhotoLibraryManaging {
                 completion(.success(filePath))
             } catch {
                 completion(.failure(PhotoLibraryError.saveFailed(underlying: error)))
+            }
+        }
+    }
+
+    func persistEditedImage(_ image: UIImage, for asset: PHAsset, completion: @escaping (Result<Void, Error>) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let options = PHContentEditingInputRequestOptions()
+            options.isNetworkAccessAllowed = true
+
+            asset.requestContentEditingInput(with: options) { input, info in
+                let inputError = info[PHContentEditingInputErrorKey] as? Error
+
+                guard let input = input else {
+                    let error = inputError
+                        ?? PhotoLibraryError.assetLoadFailed(
+                            underlying: NSError(
+                                domain: "PhotoLibraryManager",
+                                code: -4,
+                                userInfo: [NSLocalizedDescriptionKey: "无法获取图片编辑输入"]
+                            )
+                        )
+                    Self.finishPersistEditedImage(completion, result: .failure(error))
+                    return
+                }
+
+                let output = PHContentEditingOutput(contentEditingInput: input)
+                let renderedOutput = Self.renderedOutputDestination(for: output)
+
+                guard let data = Self.renderedImageData(
+                    for: image,
+                    outputURL: renderedOutput.url,
+                    typeIdentifier: renderedOutput.typeIdentifier
+                ) else {
+                    let error = PhotoLibraryError.exportFailed(
+                        underlying: NSError(
+                            domain: "PhotoLibraryManager",
+                            code: -5,
+                            userInfo: [NSLocalizedDescriptionKey: "无法生成裁剪后的图片数据"]
+                        )
+                    )
+                    Self.finishPersistEditedImage(completion, result: .failure(error))
+                    return
+                }
+
+                do {
+                    try data.write(to: renderedOutput.url, options: .atomic)
+                } catch {
+                    Self.finishPersistEditedImage(completion, result: .failure(PhotoLibraryError.saveFailed(underlying: error)))
+                    return
+                }
+
+                output.adjustmentData = PHAdjustmentData(
+                    formatIdentifier: "com.livephotogallery.crop",
+                    formatVersion: "1.0",
+                    data: Data("{\"operation\":\"crop\"}".utf8)
+                )
+
+                PHPhotoLibrary.shared().performChanges({
+                    let request = PHAssetChangeRequest(for: asset)
+                    request.contentEditingOutput = output
+                }) { success, error in
+                    if success {
+                        Self.finishPersistEditedImage(completion, result: .success(()))
+                    } else {
+                        let finalError = error ?? PhotoLibraryError.saveFailed(
+                            underlying: NSError(
+                                domain: "PhotoLibraryManager",
+                                code: -6,
+                                userInfo: [NSLocalizedDescriptionKey: "写回相册失败"]
+                            )
+                        )
+                        Self.finishPersistEditedImage(completion, result: .failure(finalError))
+                    }
+                }
             }
         }
     }
@@ -333,6 +409,7 @@ class PhotoLibraryManager: PhotoLibraryManaging {
         let options = PHImageRequestOptions()
         options.deliveryMode = .opportunistic
         options.isNetworkAccessAllowed = true
+        options.version = .current
         imageManager.startCachingImages(for: assets, targetSize: size, contentMode: .aspectFill, options: options)
     }
 
@@ -346,6 +423,97 @@ class PhotoLibraryManager: PhotoLibraryManaging {
 
     func cancelImageRequest(_ requestID: PHImageRequestID) {
         imageManager.cancelImageRequest(requestID)
+    }
+
+    private static func finishPersistEditedImage<T>(
+        _ completion: @escaping (Result<T, Error>) -> Void,
+        result: Result<T, Error>
+    ) {
+        DispatchQueue.main.async {
+            completion(result)
+        }
+    }
+
+    private static func renderedOutputDestination(for output: PHContentEditingOutput) -> (url: URL, typeIdentifier: String?) {
+        if #available(iOS 17.0, *),
+           let type = output.defaultRenderedContentType {
+            let destinationURL = (try? output.renderedContentURL(for: type)) ?? output.renderedContentURL
+            return (destinationURL, type.identifier)
+        }
+
+        let url = output.renderedContentURL
+        if #available(iOS 14.0, *),
+           let type = UTType(filenameExtension: url.pathExtension) {
+            return (url, type.identifier)
+        }
+
+        return (url, nil)
+    }
+
+    private static func renderedImageData(for image: UIImage, outputURL: URL, typeIdentifier: String?) -> Data? {
+        let normalizedImage = image.cgImage == nil ? image.opaque() : image
+
+        if shouldEncodeAsPNG(typeIdentifier: typeIdentifier, outputURL: outputURL) {
+            return normalizedImage.pngData()
+        }
+
+        if shouldEncodeAsHEIC(typeIdentifier: typeIdentifier, outputURL: outputURL) {
+            return encodedImageData(from: normalizedImage.opaque(), typeIdentifier: typeIdentifier ?? "public.heic", compressionQuality: 0.95)
+        }
+
+        if shouldEncodeAsTIFF(typeIdentifier: typeIdentifier, outputURL: outputURL) {
+            return encodedImageData(from: normalizedImage, typeIdentifier: typeIdentifier ?? "public.tiff", compressionQuality: nil)
+        }
+
+        return normalizedImage.opaque().jpegData(compressionQuality: 0.95)
+    }
+
+    private static func encodedImageData(from image: UIImage, typeIdentifier: String, compressionQuality: CGFloat?) -> Data? {
+        let renderedImage = image.cgImage == nil ? image.opaque() : image
+        guard let cgImage = renderedImage.cgImage else { return nil }
+
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, typeIdentifier as CFString, 1, nil) else { return nil }
+
+        var properties: [CFString: Any] = [:]
+        if let compressionQuality {
+            properties[kCGImageDestinationLossyCompressionQuality] = compressionQuality
+        }
+
+        CGImageDestinationAddImage(destination, cgImage, properties as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return data as Data
+    }
+
+    private static func shouldEncodeAsPNG(typeIdentifier: String?, outputURL: URL) -> Bool {
+        if #available(iOS 14.0, *),
+           let typeIdentifier,
+           UTType(typeIdentifier)?.conforms(to: .png) == true {
+            return true
+        }
+        return outputURL.pathExtension.lowercased() == "png"
+    }
+
+    private static func shouldEncodeAsHEIC(typeIdentifier: String?, outputURL: URL) -> Bool {
+        if #available(iOS 14.0, *),
+           let typeIdentifier,
+           let type = UTType(typeIdentifier),
+           type.conforms(to: .heic) || type.identifier == "public.heif" {
+            return true
+        }
+
+        let ext = outputURL.pathExtension.lowercased()
+        return ext == "heic" || ext == "heif"
+    }
+
+    private static func shouldEncodeAsTIFF(typeIdentifier: String?, outputURL: URL) -> Bool {
+        if #available(iOS 14.0, *),
+           let typeIdentifier,
+           UTType(typeIdentifier)?.conforms(to: .tiff) == true {
+            return true
+        }
+        let ext = outputURL.pathExtension.lowercased()
+        return ext == "tif" || ext == "tiff"
     }
 
     // MARK: - 文件大小

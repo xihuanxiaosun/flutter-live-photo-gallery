@@ -555,6 +555,7 @@ class PhotoGridViewController: UIViewController {
                     cell.updateSelectionState(isSelected: now, selectionIndex: selectionIndex, animated: false)
                 }
             }
+            self.refreshEditedThumbnailsIfNeeded()
             self.updateDoneButton()
         }
 
@@ -566,6 +567,21 @@ class PhotoGridViewController: UIViewController {
     private func calculateGlobalIndex(for indexPath: IndexPath) -> Int {
         let precedingSections = min(indexPath.section, sections.count)
         return (0..<precedingSections).reduce(0) { $0 + sections[$1].assets.count } + indexPath.item
+    }
+
+    private func refreshEditedThumbnailsIfNeeded() {
+        var editedIndexPaths: [IndexPath] = []
+
+        for (sectionIndex, section) in sections.enumerated() {
+            for (itemIndex, asset) in section.assets.enumerated() where asset.needsThumbnailRefresh {
+                asset.needsThumbnailRefresh = false
+                editedIndexPaths.append(IndexPath(item: itemIndex, section: sectionIndex))
+            }
+        }
+
+        guard !editedIndexPaths.isEmpty else { return }
+        PhotoLibraryManager.shared.stopCachingAll()
+        collectionView.reloadItems(at: editedIndexPaths)
     }
 
     private func switchToAlbum(_ album: AlbumModel) {

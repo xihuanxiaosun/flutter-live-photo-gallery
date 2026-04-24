@@ -26,7 +26,10 @@ class PhotoPreviewAnimator: NSObject, UIViewControllerAnimatedTransitioning {
     }
 
     private func animatePresentation(using context: UIViewControllerContextTransitioning) {
-        guard let toView = context.view(forKey: .to) else { return }
+        guard let toView = context.view(forKey: .to) else {
+            context.completeTransition(true)
+            return
+        }
 
         let containerView = context.containerView
         containerView.addSubview(toView)
@@ -51,79 +54,86 @@ class PhotoPreviewAnimator: NSObject, UIViewControllerAnimatedTransitioning {
     private func animateDismissal(using context: UIViewControllerContextTransitioning) {
         guard let fromVC = context.viewController(forKey: .from) as? PhotoPreviewPageViewController,
               let fromView = context.view(forKey: .from) else {
+            context.completeTransition(true)
             return
         }
 
         let containerView = context.containerView
+        let backgroundView = UIView(frame: containerView.bounds)
+        backgroundView.backgroundColor = .black
+        backgroundView.alpha = fromVC.dismissalBackgroundAlpha
+        containerView.insertSubview(backgroundView, belowSubview: fromView)
+        let duration = transitionDuration(using: context)
 
-        // 如果有源位置，执行英雄式动画
         if !sourceFrame.isEmpty {
-            // 获取当前显示的图片视图
-            let snapshotView = createSnapshotView(from: fromVC)
+            let snapshotView = createSnapshotView(from: fromVC, in: containerView)
 
             if let snapshot = snapshotView {
-                // 保留当前的 transform 应用到 snapshot 的初始位置
-                let currentTransform = fromVC.pageViewController.view.transform
-                snapshot.transform = currentTransform
-
                 containerView.addSubview(snapshot)
-
-                // 隐藏原视图
                 fromView.alpha = 0
 
-                // 计算动画参数
-                let finalFrame = sourceFrame
+                UIView.animate(
+                    withDuration: duration,
+                    delay: 0,
+                    options: .curveLinear,
+                    animations: {
+                        backgroundView.alpha = 0
+                    }
+                )
 
                 UIView.animate(
-                    withDuration: transitionDuration(using: context),
+                    withDuration: duration,
                     delay: 0,
-                    options: .curveEaseInOut,
+                    options: [.curveEaseOut, .beginFromCurrentState],
                     animations: {
-                        // 重置 transform 并移动到目标位置
-                        snapshot.transform = .identity
-                        snapshot.frame = finalFrame
-                        snapshot.alpha = 0.8
+                        snapshot.frame = self.sourceFrame
+                        snapshot.alpha = 0.92
                     },
                     completion: { _ in
+                        backgroundView.removeFromSuperview()
                         snapshot.removeFromSuperview()
                         context.completeTransition(!context.transitionWasCancelled)
                     }
                 )
             } else {
-                // 降级方案：简单淡出
-                fallbackDismissal(fromView: fromView, context: context)
+                fallbackDismissal(fromView: fromView, backgroundView: backgroundView, context: context)
             }
         } else {
-            // 降级方案：简单淡出
-            fallbackDismissal(fromView: fromView, context: context)
+            fallbackDismissal(fromView: fromView, backgroundView: backgroundView, context: context)
         }
     }
 
-    private func createSnapshotView(from previewVC: PhotoPreviewPageViewController) -> UIView? {
+    private func createSnapshotView(from previewVC: PhotoPreviewPageViewController, in containerView: UIView) -> UIView? {
         guard let photoVC = previewVC.currentPhotoVC,
-              let image = photoVC.imageView.image,
-              let window = photoVC.view.window else {
+              let image = photoVC.imageView.image else {
             return nil
         }
 
         let imageView = UIImageView(image: image)
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
-        imageView.frame = photoVC.imageView.convert(photoVC.imageView.bounds, to: window)
+        imageView.frame = photoVC.imageView.convert(photoVC.imageView.bounds, to: containerView)
 
         return imageView
     }
 
-    private func fallbackDismissal(fromView: UIView, context: UIViewControllerContextTransitioning) {
+    private func fallbackDismissal(
+        fromView: UIView,
+        backgroundView: UIView,
+        context: UIViewControllerContextTransitioning
+    ) {
+        let duration = transitionDuration(using: context)
         UIView.animate(
-            withDuration: transitionDuration(using: context),
+            withDuration: duration,
             delay: 0,
             options: .curveEaseIn,
             animations: {
+                backgroundView.alpha = 0
                 fromView.alpha = 0
                 fromView.transform = CGAffineTransform(scaleX: 0.8, y: 0.8)
             },
             completion: { _ in
+                backgroundView.removeFromSuperview()
                 context.completeTransition(!context.transitionWasCancelled)
             }
         )
@@ -139,13 +149,41 @@ class PhotoPreviewPresentationController: UIPresentationController {
     }
 
     override var shouldRemovePresentersView: Bool {
-        return false  // ✅ 关键：保留下层视图，这样下滑时可以看到
+        return false  // 保留下层视图，这样下滑时可以看到
     }
 
     override func presentationTransitionWillBegin() {
         // 不添加 dimmingView，让 presentedViewController 自己控制背景
         guard let presentedView = presentedView else { return }
         presentedView.frame = frameOfPresentedViewInContainerView
+    }
+
+    override func dismissalTransitionWillBegin() {
+        super.dismissalTransitionWillBegin()
+        // Race condition: user dismisses preview while crop is still mid-dismiss.
+        // UIKit has moved preview's view into the crop container; restore it to our
+        // own containerView so the dismiss animation has the correct source view,
+        // then remove the crop container so it doesn't orphan after our dismiss.
+        guard let previewVC = presentedViewController as? PhotoPreviewPageViewController,
+              let cropContainer = previewVC.cropPresentationContainer else { return }
+        if let myContainer = containerView, previewVC.view.superview === cropContainer {
+            previewVC.view.frame = myContainer.bounds
+            myContainer.addSubview(previewVC.view)
+        }
+        cropContainer.removeFromSuperview()
+        previewVC.cropPresentationContainer = nil
+    }
+
+    override func dismissalTransitionDidEnd(_ completed: Bool) {
+        // Capture BEFORE calling super — UIKit clears these properties inside super,
+        // so accessing them afterwards returns nil and removeFromSuperview() becomes a no-op.
+        let capturedContainer = containerView
+        let capturedPresented = presentedView
+        super.dismissalTransitionDidEnd(completed)
+        if completed {
+            capturedPresented?.removeFromSuperview()
+            capturedContainer?.removeFromSuperview()
+        }
     }
 
     override func containerViewWillLayoutSubviews() {
