@@ -1,0 +1,23 @@
+{
+  "version": 0,
+  "use-external-names": false,
+  "case-sensitive": false,
+  "roots": [{
+    "type": "directory",
+    "name": "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Debug-iphoneos/live_photo_gallery/live_photo_gallery.framework/Modules",
+    "contents": [{
+      "type": "file",
+      "name": "module.modulemap",
+      "external-contents": "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/unextended-module.modulemap",
+    }]
+    },
+    {
+    "type": "directory",
+    "name": "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Debug-iphoneos/live_photo_gallery/live_photo_gallery.framework/Headers",
+    "contents": [{
+      "type": "file",
+      "name": "live_photo_gallery-Swift.h",
+      "external-contents": "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/unextended-interface-header.h",
+    }]
+  }]
+}

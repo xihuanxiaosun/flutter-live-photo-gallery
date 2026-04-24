@@ -1,0 +1,5 @@
+ extern const unsigned char live_photo_galleryVersionString[];
+ extern const double live_photo_galleryVersionNumber;
+
+ const unsigned char live_photo_galleryVersionString[] __attribute__ ((used)) = "@(#)PROGRAM:live_photo_gallery  PROJECT:Pods-1" "\n";
+ const double live_photo_galleryVersionNumber __attribute__ ((used)) = (double)1.;

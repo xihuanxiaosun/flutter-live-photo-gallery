@@ -1,0 +1,4 @@
+
+module live_photo_gallery.__Swift {
+  exclude header "live_photo_gallery-Swift.h"
+}

@@ -1,0 +1,199 @@
+{
+  "" : {
+    "diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/live_photo_gallery-primary.dia",
+    "emit-module-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/live_photo_gallery-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/live_photo_gallery-primary-emit-module.dia",
+    "pch" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/live_photo_gallery-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/live_photo_gallery-primary.swiftdeps"
+  },
+  "/Volumes/saber/dev/projects/live_photo_gallery/ios/Classes/Core/Constants.swift" : {
+    "const-values" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Constants.swiftconstvalues",
+    "dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Constants.d",
+    "diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Constants.dia",
+    "index-unit-output-path" : "/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Constants.o",
+    "llvm-bc" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Constants.bc",
+    "object" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Constants.o",
+    "swift-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Constants.swiftdeps",
+    "swiftmodule" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Constants~partial.swiftmodule"
+  },
+  "/Volumes/saber/dev/projects/live_photo_gallery/ios/Classes/Core/Errors.swift" : {
+    "const-values" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Errors.swiftconstvalues",
+    "dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Errors.d",
+    "diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Errors.dia",
+    "index-unit-output-path" : "/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Errors.o",
+    "llvm-bc" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Errors.bc",
+    "object" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Errors.o",
+    "swift-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Errors.swiftdeps",
+    "swiftmodule" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Errors~partial.swiftmodule"
+  },
+  "/Volumes/saber/dev/projects/live_photo_gallery/ios/Classes/Core/Models.swift" : {
+    "const-values" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Models.swiftconstvalues",
+    "dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Models.d",
+    "diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Models.dia",
+    "index-unit-output-path" : "/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Models.o",
+    "llvm-bc" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Models.bc",
+    "object" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Models.o",
+    "swift-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Models.swiftdeps",
+    "swiftmodule" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Models~partial.swiftmodule"
+  },
+  "/Volumes/saber/dev/projects/live_photo_gallery/ios/Classes/Core/PhotoSection.swift" : {
+    "const-values" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoSection.swiftconstvalues",
+    "dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoSection.d",
+    "diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoSection.dia",
+    "index-unit-output-path" : "/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoSection.o",
+    "llvm-bc" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoSection.bc",
+    "object" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoSection.o",
+    "swift-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoSection.swiftdeps",
+    "swiftmodule" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoSection~partial.swiftmodule"
+  },
+  "/Volumes/saber/dev/projects/live_photo_gallery/ios/Classes/Core/Protocols.swift" : {
+    "const-values" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Protocols.swiftconstvalues",
+    "dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Protocols.d",
+    "diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Protocols.dia",
+    "index-unit-output-path" : "/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Protocols.o",
+    "llvm-bc" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Protocols.bc",
+    "object" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Protocols.o",
+    "swift-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Protocols.swiftdeps",
+    "swiftmodule" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/Protocols~partial.swiftmodule"
+  },
+  "/Volumes/saber/dev/projects/live_photo_gallery/ios/Classes/Core/UIImage+Extensions.swift" : {
+    "const-values" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/UIImage+Extensions.swiftconstvalues",
+    "dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/UIImage+Extensions.d",
+    "diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/UIImage+Extensions.dia",
+    "index-unit-output-path" : "/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/UIImage+Extensions.o",
+    "llvm-bc" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/UIImage+Extensions.bc",
+    "object" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/UIImage+Extensions.o",
+    "swift-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/UIImage+Extensions.swiftdeps",
+    "swiftmodule" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/UIImage+Extensions~partial.swiftmodule"
+  },
+  "/Volumes/saber/dev/projects/live_photo_gallery/ios/Classes/LivePhotoGalleryCore.swift" : {
+    "const-values" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoGalleryCore.swiftconstvalues",
+    "dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoGalleryCore.d",
+    "diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoGalleryCore.dia",
+    "index-unit-output-path" : "/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoGalleryCore.o",
+    "llvm-bc" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoGalleryCore.bc",
+    "object" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoGalleryCore.o",
+    "swift-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoGalleryCore.swiftdeps",
+    "swiftmodule" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoGalleryCore~partial.swiftmodule"
+  },
+  "/Volumes/saber/dev/projects/live_photo_gallery/ios/Classes/LivePhotoGalleryPlugin.swift" : {
+    "const-values" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoGalleryPlugin.swiftconstvalues",
+    "dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoGalleryPlugin.d",
+    "diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoGalleryPlugin.dia",
+    "index-unit-output-path" : "/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoGalleryPlugin.o",
+    "llvm-bc" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoGalleryPlugin.bc",
+    "object" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoGalleryPlugin.o",
+    "swift-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoGalleryPlugin.swiftdeps",
+    "swiftmodule" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoGalleryPlugin~partial.swiftmodule"
+  },
+  "/Volumes/saber/dev/projects/live_photo_gallery/ios/Classes/PluginBridge.swift" : {
+    "const-values" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PluginBridge.swiftconstvalues",
+    "dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PluginBridge.d",
+    "diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PluginBridge.dia",
+    "index-unit-output-path" : "/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PluginBridge.o",
+    "llvm-bc" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PluginBridge.bc",
+    "object" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PluginBridge.o",
+    "swift-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PluginBridge.swiftdeps",
+    "swiftmodule" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PluginBridge~partial.swiftmodule"
+  },
+  "/Volumes/saber/dev/projects/live_photo_gallery/ios/Classes/Services/ExportManager.swift" : {
+    "const-values" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/ExportManager.swiftconstvalues",
+    "dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/ExportManager.d",
+    "diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/ExportManager.dia",
+    "index-unit-output-path" : "/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/ExportManager.o",
+    "llvm-bc" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/ExportManager.bc",
+    "object" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/ExportManager.o",
+    "swift-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/ExportManager.swiftdeps",
+    "swiftmodule" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/ExportManager~partial.swiftmodule"
+  },
+  "/Volumes/saber/dev/projects/live_photo_gallery/ios/Classes/Services/LivePhotoExtractor.swift" : {
+    "const-values" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoExtractor.swiftconstvalues",
+    "dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoExtractor.d",
+    "diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoExtractor.dia",
+    "index-unit-output-path" : "/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoExtractor.o",
+    "llvm-bc" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoExtractor.bc",
+    "object" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoExtractor.o",
+    "swift-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoExtractor.swiftdeps",
+    "swiftmodule" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/LivePhotoExtractor~partial.swiftmodule"
+  },
+  "/Volumes/saber/dev/projects/live_photo_gallery/ios/Classes/Services/PhotoLibraryManager.swift" : {
+    "const-values" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoLibraryManager.swiftconstvalues",
+    "dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoLibraryManager.d",
+    "diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoLibraryManager.dia",
+    "index-unit-output-path" : "/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoLibraryManager.o",
+    "llvm-bc" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoLibraryManager.bc",
+    "object" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoLibraryManager.o",
+    "swift-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoLibraryManager.swiftdeps",
+    "swiftmodule" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoLibraryManager~partial.swiftmodule"
+  },
+  "/Volumes/saber/dev/projects/live_photo_gallery/ios/Classes/UI/Album/AlbumDropdownPanel.swift" : {
+    "const-values" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/AlbumDropdownPanel.swiftconstvalues",
+    "dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/AlbumDropdownPanel.d",
+    "diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/AlbumDropdownPanel.dia",
+    "index-unit-output-path" : "/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/AlbumDropdownPanel.o",
+    "llvm-bc" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/AlbumDropdownPanel.bc",
+    "object" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/AlbumDropdownPanel.o",
+    "swift-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/AlbumDropdownPanel.swiftdeps",
+    "swiftmodule" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/AlbumDropdownPanel~partial.swiftmodule"
+  },
+  "/Volumes/saber/dev/projects/live_photo_gallery/ios/Classes/UI/Album/AlbumListViewController.swift" : {
+    "const-values" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/AlbumListViewController.swiftconstvalues",
+    "dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/AlbumListViewController.d",
+    "diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/AlbumListViewController.dia",
+    "index-unit-output-path" : "/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/AlbumListViewController.o",
+    "llvm-bc" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/AlbumListViewController.bc",
+    "object" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/AlbumListViewController.o",
+    "swift-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/AlbumListViewController.swiftdeps",
+    "swiftmodule" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/AlbumListViewController~partial.swiftmodule"
+  },
+  "/Volumes/saber/dev/projects/live_photo_gallery/ios/Classes/UI/Grid/PhotoGridCell.swift" : {
+    "const-values" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoGridCell.swiftconstvalues",
+    "dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoGridCell.d",
+    "diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoGridCell.dia",
+    "index-unit-output-path" : "/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoGridCell.o",
+    "llvm-bc" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoGridCell.bc",
+    "object" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoGridCell.o",
+    "swift-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoGridCell.swiftdeps",
+    "swiftmodule" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoGridCell~partial.swiftmodule"
+  },
+  "/Volumes/saber/dev/projects/live_photo_gallery/ios/Classes/UI/Grid/PhotoGridViewController.swift" : {
+    "const-values" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoGridViewController.swiftconstvalues",
+    "dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoGridViewController.d",
+    "diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoGridViewController.dia",
+    "index-unit-output-path" : "/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoGridViewController.o",
+    "llvm-bc" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoGridViewController.bc",
+    "object" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoGridViewController.o",
+    "swift-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoGridViewController.swiftdeps",
+    "swiftmodule" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoGridViewController~partial.swiftmodule"
+  },
+  "/Volumes/saber/dev/projects/live_photo_gallery/ios/Classes/UI/Grid/PhotoSectionHeaderView.swift" : {
+    "const-values" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoSectionHeaderView.swiftconstvalues",
+    "dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoSectionHeaderView.d",
+    "diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoSectionHeaderView.dia",
+    "index-unit-output-path" : "/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoSectionHeaderView.o",
+    "llvm-bc" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoSectionHeaderView.bc",
+    "object" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoSectionHeaderView.o",
+    "swift-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoSectionHeaderView.swiftdeps",
+    "swiftmodule" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoSectionHeaderView~partial.swiftmodule"
+  },
+  "/Volumes/saber/dev/projects/live_photo_gallery/ios/Classes/UI/Preview/PhotoPreviewPageViewController.swift" : {
+    "const-values" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoPreviewPageViewController.swiftconstvalues",
+    "dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoPreviewPageViewController.d",
+    "diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoPreviewPageViewController.dia",
+    "index-unit-output-path" : "/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoPreviewPageViewController.o",
+    "llvm-bc" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoPreviewPageViewController.bc",
+    "object" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoPreviewPageViewController.o",
+    "swift-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoPreviewPageViewController.swiftdeps",
+    "swiftmodule" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoPreviewPageViewController~partial.swiftmodule"
+  },
+  "/Volumes/saber/dev/projects/live_photo_gallery/ios/Classes/UI/Preview/PhotoPreviewTransition.swift" : {
+    "const-values" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoPreviewTransition.swiftconstvalues",
+    "dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoPreviewTransition.d",
+    "diagnostics" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoPreviewTransition.dia",
+    "index-unit-output-path" : "/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoPreviewTransition.o",
+    "llvm-bc" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoPreviewTransition.bc",
+    "object" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoPreviewTransition.o",
+    "swift-dependencies" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoPreviewTransition.swiftdeps",
+    "swiftmodule" : "/Volumes/saber/dev/projects/live_photo_gallery/example/ios/build/Pods.build/Debug-iphoneos/live_photo_gallery.build/Objects-normal/arm64/PhotoPreviewTransition~partial.swiftmodule"
+  }
+}

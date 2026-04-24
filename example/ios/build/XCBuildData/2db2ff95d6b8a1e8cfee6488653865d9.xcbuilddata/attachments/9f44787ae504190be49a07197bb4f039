@@ -1,0 +1,4 @@
+
+module live_photo_gallery.Swift {
+  header "live_photo_gallery-Swift.h"
+}
