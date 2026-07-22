@@ -52,7 +52,6 @@ import com.yalantis.ucrop.UCrop
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.roundToInt
-import java.security.MessageDigest
 
 /**
  * 资源预览 Activity
@@ -101,10 +100,11 @@ class PreviewActivity : AppCompatActivity() {
     private var saveAlbumName = ""            // 保存图片的相册名，空串 = 用 App 名
     private var sourceFrame: RectF? = null
 
-    // ── ExoPlayer（内联视频播放）──────────────────────
-    private var exoPlayer: androidx.media3.exoplayer.ExoPlayer? = null
-    private var playerView: androidx.media3.ui.PlayerView? = null
-    private var currentlyPlayingHolder: PreviewViewHolder? = null
+    // 网络图下载 + 存相册（IO 已抽到 MediaDownloader）
+    private val mediaDownloader by lazy { MediaDownloader(this) }
+
+    // 内联视频播放（ExoPlayer 生命周期已抽到 VideoPlaybackController）
+    private val videoController by lazy { VideoPlaybackController(this) }
     private var btnShare: android.widget.ImageView? = null
 
     private val selectedIds = mutableListOf<String>()
@@ -172,7 +172,7 @@ class PreviewActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        exoPlayer?.pause()
+        videoController.pause()
     }
 
     override fun onDestroy() {
@@ -182,7 +182,7 @@ class PreviewActivity : AppCompatActivity() {
         if (::previewStage.isInitialized) {
             previewStage.handler?.removeCallbacksAndMessages(null)
         }
-        releasePlayer()
+        videoController.release()
     }
 
     private fun setupShareButton() {
@@ -205,67 +205,11 @@ class PreviewActivity : AppCompatActivity() {
         (topBar as? ViewGroup)?.addView(shareBtn)
     }
 
+    // 分享行为已抽到 PreviewShareController
+    private val shareController by lazy { PreviewShareController(this) }
     private fun shareCurrentAsset() {
-        val asset   = previewAssets.getOrNull(viewPager.currentItem) ?: return
-        val assetId = (asset["assetId"] as? String)?.takeIf { it.isNotBlank() }
-        val url     = (asset["url"]     as? String)?.takeIf { it.isNotBlank() }
-        val videoUrl = (asset["videoUrl"] as? String)?.takeIf { it.isNotBlank() }
-        val shareUri = when {
-            assetId != null -> runCatching { Uri.parse(assetId) }.getOrNull()
-            videoUrl != null -> runCatching { Uri.parse(videoUrl) }.getOrNull()
-            url      != null -> runCatching { Uri.parse(url)     }.getOrNull()
-            else            -> null
-        } ?: return
-        val mediaType = (asset["mediaType"] as? String) ?: "image"
-        val mimeType  = if (mediaType == "video") "video/*" else "image/*"
-        runCatching {
-            startActivity(
-                Intent.createChooser(
-                    Intent(Intent.ACTION_SEND).apply {
-                        type = mimeType
-                        putExtra(Intent.EXTRA_STREAM, shareUri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }, "分享"
-                )
-            )
-        }
-    }
-
-    // ──────────────────────────────────────────────
-    // ExoPlayer 内联视频播放
-    // ──────────────────────────────────────────────
-
-    private fun getOrCreatePlayer(): androidx.media3.exoplayer.ExoPlayer =
-        exoPlayer ?: androidx.media3.exoplayer.ExoPlayer.Builder(this).build().also { exoPlayer = it }
-
-    private fun getOrCreatePlayerView(): androidx.media3.ui.PlayerView =
-        playerView ?: androidx.media3.ui.PlayerView(this).apply {
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            useController = true
-        }.also { playerView = it }
-
-    internal fun playVideoInHolder(holder: PreviewViewHolder, uri: Uri) {
-        val player = getOrCreatePlayer()
-        val pv     = getOrCreatePlayerView()
-        // 从旧 holder 撤离
-        currentlyPlayingHolder?.takeIf { it !== holder }?.releasePlayerView()
-        pv.player = player
-        holder.attachPlayerView(pv)
-        currentlyPlayingHolder = holder
-        player.setMediaItem(androidx.media3.common.MediaItem.fromUri(uri))
-        player.prepare()
-        player.playWhenReady = true
-    }
-
-    internal fun releasePlayer() {
-        currentlyPlayingHolder?.releasePlayerView()
-        currentlyPlayingHolder = null
-        exoPlayer?.release()
-        exoPlayer = null
-        playerView = null
+        val asset = previewAssets.getOrNull(viewPager.currentItem) ?: return
+        shareController.share(asset)
     }
 
     // ──────────────────────────────────────────────
@@ -453,26 +397,32 @@ class PreviewActivity : AppCompatActivity() {
             if (selectedIds.contains(assetId)) {
                 selectedIds.remove(assetId)
             } else {
-                if (selectedIds.size >= maxCount) {
-                    LivePhotoGalleryPlugin.getChannel(engineKey)?.invokeMethod(
-                        "onMaxCountReached", mapOf("maxCount" to maxCount)
-                    )
-                    Toast.makeText(this, "最多只能选择 $maxCount 张", Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
-                }
-                // maxVideoCount 限制
                 val mediaType = (asset["mediaType"] as? String) ?: "image"
                 val isVideoOrLive = mediaType == "video" || mediaType == "livePhoto"
-                if (maxVideoCount >= 0 && isVideoOrLive) {
-                    val currentVideoCount = selectedIds.count { id ->
-                        val a = previewAssets.firstOrNull { selectionIdOf(it) == id }
-                        val mt = (a?.get("mediaType") as? String) ?: "image"
-                        mt == "video" || mt == "livePhoto"
+                val currentVideoCount = selectedIds.count { id ->
+                    val a = previewAssets.firstOrNull { selectionIdOf(it) == id }
+                    val mt = (a?.get("mediaType") as? String) ?: "image"
+                    mt == "video" || mt == "livePhoto"
+                }
+                when (SelectionLimits.canAdd(
+                    currentCount = selectedIds.size,
+                    maxCount = maxCount,
+                    currentVideoCount = currentVideoCount,
+                    maxVideoCount = maxVideoCount,
+                    isVideoOrLive = isVideoOrLive,
+                )) {
+                    SelectionLimits.Result.MAX_COUNT -> {
+                        LivePhotoGalleryPlugin.getChannel(engineKey)?.invokeMethod(
+                            "onMaxCountReached", mapOf("maxCount" to maxCount)
+                        )
+                        Toast.makeText(this, "最多只能选择 $maxCount 张", Toast.LENGTH_SHORT).show()
+                        return@setOnClickListener
                     }
-                    if (currentVideoCount >= maxVideoCount) {
+                    SelectionLimits.Result.MAX_VIDEO -> {
                         Toast.makeText(this, "最多只能选择 $maxVideoCount 个视频/动态照片", Toast.LENGTH_SHORT).show()
                         return@setOnClickListener
                     }
+                    SelectionLimits.Result.OK -> Unit
                 }
                 selectedIds.add(assetId)
             }
@@ -666,67 +616,18 @@ class PreviewActivity : AppCompatActivity() {
         val url      = (asset["url"] as? String)?.takeIf { it.isNotBlank() } ?: return
 
         btnDownload.isEnabled = false
+        val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
         lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    // #1 fix: 先用 URI 解析 path 再取扩展名，避免 URL 含 ?param 时截取出错
-                    val ext = runCatching {
-                        java.net.URI(url).path
-                            .substringAfterLast('.').lowercase()
-                            .takeIf { it.length in 2..5 && it.all(Char::isLetter) }
-                    }.getOrNull() ?: "jpg"
-
-                    val mimeType = when (ext) {
-                        "png"  -> "image/png"
-                        "gif"  -> "image/gif"
-                        "webp" -> "image/webp"
-                        else   -> "image/jpeg"
-                    }
-
-                    // 1. 下载到本地临时文件（分块读取 + 进度回报）
-                    val connection = (java.net.URL(url).openConnection()
-                        as java.net.HttpURLConnection).apply {
-                        connectTimeout = 15_000
-                        readTimeout    = 30_000
-                        connect()
-                    }
-                    val totalBytes = connection.contentLengthLong  // -1 if unknown
-                    val tempFile = java.io.File.createTempFile("lpg_dl_", ".$ext", cacheDir)
-                    val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
-
-                    // #2 fix: try/finally 保证临时文件在任何情况下都会被清理
-                    try {
-                        connection.inputStream.use { inp ->
-                            tempFile.outputStream().use { out ->
-                                val buffer = ByteArray(8 * 1024)
-                                var downloaded = 0L
-                                var lastPercent = -1
-                                var n: Int
-                                while (inp.read(buffer).also { n = it } != -1) {
-                                    out.write(buffer, 0, n)
-                                    downloaded += n
-                                    if (totalBytes > 0) {
-                                        val pct = (downloaded * 100 / totalBytes).toInt()
-                                        if (pct != lastPercent) {
-                                            lastPercent = pct
-                                            val fraction = downloaded.toDouble() / totalBytes.toDouble()
-                                            mainHandler.post {
-                                                LivePhotoGalleryPlugin.getChannel(engineKey)
-                                                    ?.invokeMethod(
-                                                        "onDownloadProgress",
-                                                        mapOf("url" to url, "progress" to fraction)
-                                                    )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        // 2. 写入系统相册（MediaStore），返回 uri 字符串
-                        saveToMediaStore(tempFile, mimeType)
-                    } finally {
-                        tempFile.delete()
+            // 下载 + 存相册的 IO 已抽到 MediaDownloader；此处只做 UI 编排（按钮/Toast/channel）
+            val result = runCatching {
+                mediaDownloader.download(url, saveAlbumName) { fraction ->
+                    // onProgress 在 IO 线程回调，切回主线程再走 channel
+                    mainHandler.post {
+                        LivePhotoGalleryPlugin.getChannel(engineKey)?.invokeMethod(
+                            "onDownloadProgress",
+                            mapOf("url" to url, "progress" to fraction)
+                        )
                     }
                 }
             }
@@ -746,10 +647,7 @@ class PreviewActivity : AppCompatActivity() {
                     }
                 },
                 onFailure = { e ->
-                    // #8 fix: UnknownHostException / SocketTimeoutException 均为 IOException 子类，
-                    // 直接判断 IOException 即可覆盖所有网络类错误
-                    val code = if (e is java.io.IOException) "NETWORK_ERROR" else "SAVE_FAILED"
-                    invokeDownloadFailure(url, code, e.message ?: "下载失败")
+                    invokeDownloadFailure(url, mediaDownloader.failureCode(e), e.message ?: "下载失败")
                 }
             )
         }
@@ -768,65 +666,17 @@ class PreviewActivity : AppCompatActivity() {
         Toast.makeText(this@PreviewActivity, "保存失败", Toast.LENGTH_SHORT).show()
     }
 
-    /**
-     * 将临时文件写入系统媒体库（Pictures/YBirds 目录）。
-     * Android Q（API 29）及以上：ContentValues + IS_PENDING 写入模式（避免部分写入被扫描）
-     * Android 9 及以下：MediaStore.Images.Media.insertImage 兼容方式
-     */
-    private fun saveToMediaStore(file: java.io.File, mimeType: String): String? {
-        val displayName = "IMG_${System.currentTimeMillis()}.${file.extension}"
-        // 相册目录：优先使用调用方传入的名称，空串则回退到 App 名
-        val albumName = saveAlbumName.ifBlank {
-            runCatching { packageManager.getApplicationLabel(applicationInfo).toString() }
-                .getOrDefault("Pictures")
-        }
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val values = ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME,   displayName)
-                put(MediaStore.Images.Media.MIME_TYPE,      mimeType)
-                put(MediaStore.Images.Media.RELATIVE_PATH,  "Pictures/$albumName")
-                put(MediaStore.Images.Media.IS_PENDING,     1)
-            }
-            val uri = contentResolver.insert(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values
-            ) ?: return null
-            runCatching {
-                contentResolver.openOutputStream(uri)?.use { out ->
-                    file.inputStream().use { it.copyTo(out) }
-                }
-                values.clear()
-                values.put(MediaStore.Images.Media.IS_PENDING, 0)
-                contentResolver.update(uri, values, null, null)
-            }.onFailure {
-                contentResolver.delete(uri, null, null)
-                return null
-            }
-            uri.toString()
-        } else {
-            @Suppress("DEPRECATION")
-            MediaStore.Images.Media.insertImage(contentResolver, file.absolutePath, displayName, null)
-        }
-    }
-
     private fun applyDismissProgress(dy: Float, dx: Float) {
-        val progress = (dy / dismissFadeDistancePx.coerceAtLeast(1f)).coerceIn(0f, 1f)
-        val easedProgress = 1f - (1f - progress) * (1f - progress)
-        val scale = (1f - easedProgress * DISMISS_SCALE_FACTOR).coerceAtLeast(DISMISS_MIN_SCALE)
-        val fadeAlpha = (1f - easedProgress * 1.28f).coerceIn(0f, 1f)
-        val stageAlpha = (1f - easedProgress * 0.08f).coerceIn(0.92f, 1f)
-
-        previewStage.translationY = dy
-        previewStage.translationX = dx * DISMISS_HORIZONTAL_FACTOR
-        previewStage.scaleX = scale
-        previewStage.scaleY = scale
-        previewStage.alpha = stageAlpha
-
-        previewScrim.alpha = fadeAlpha
-
-        val barAlpha = (1f - easedProgress * 1.35f).coerceIn(0f, 1f)
-        topBar.alpha = barAlpha
+        val t = DismissGestureMath.transformFor(dy, dx, dismissFadeDistancePx)
+        previewStage.translationY = t.translationY
+        previewStage.translationX = t.translationX
+        previewStage.scaleX = t.scale
+        previewStage.scaleY = t.scale
+        previewStage.alpha = t.stageAlpha
+        previewScrim.alpha = t.scrimAlpha
+        topBar.alpha = t.barAlpha
         if (showRadio) {
-            bottomBar.alpha = barAlpha
+            bottomBar.alpha = t.barAlpha
         }
     }
 
@@ -859,24 +709,17 @@ class PreviewActivity : AppCompatActivity() {
                                     ExportHelper.saveThumbnail(this@PreviewActivity, asset, 200, 200)
                                 }
                             }.getOrDefault("")
-                            val outMediaType = if (asset.isMotionPhoto) "livePhoto" else asset.mediaType
-                            val outDuration: Double? = if (asset.mediaType == "video") {
-                                asset.duration / 1000.0
-                            } else {
-                                null
-                            }
-                            val outAssetId = editedPath ?: assetId
                             val size = if (!editedPath.isNullOrBlank()) imageSizeFromFile(editedPath) else null
-                            mapOf(
-                                "assetId"       to outAssetId,
-                                "originAssetId" to assetId,
-                                // 对齐 iOS：Live Photo 返回 "livePhoto" 而非 "image"
-                                "mediaType"     to outMediaType,
-                                "thumbnailPath" to thumbPath,
-                                "editedPath"    to editedPath,
-                                "duration"      to outDuration,
-                                "width"         to (size?.first ?: asset.width),
-                                "height"        to (size?.second ?: asset.height)
+                            ResultItemMapper.localItem(
+                                originAssetId = assetId,
+                                editedPath = editedPath,
+                                mediaType = asset.mediaType,
+                                isMotionPhoto = asset.isMotionPhoto,
+                                durationMs = asset.duration,
+                                thumbPath = thumbPath,
+                                width = size?.first ?: asset.width,
+                                height = size?.second ?: asset.height,
+                                includeOriginId = true,
                             )
                         } else {
                             // 网络图片或无法通过 MediaStore 查到时回退到传入数据
@@ -902,39 +745,26 @@ class PreviewActivity : AppCompatActivity() {
                             } else {
                                 urlStr ?: ""
                             }
-                            mapOf(
-                                // iOS/Android：网络资源的 assetId 由 selectionIdOf 生成，且用于落盘缓存命名
-                                "assetId"       to (editedPathByAssetId[assetId] ?: assetId),
-                                "originAssetId" to assetId,
-                                "mediaType"     to mediaTypeOut,
-                                "thumbnailPath" to thumbPath,
-                                "editedPath"    to editedPathByAssetId[assetId],
-                                "duration"      to durationOut,
-                                "width"         to src.intValue("width"),
-                                "height"        to src.intValue("height")
+                            // 网络资源的 assetId 由 selectionIdOf 生成，且用于落盘缓存命名
+                            ResultItemMapper.networkItem(
+                                originAssetId = assetId,
+                                editedPath = editedPathByAssetId[assetId],
+                                mediaType = mediaTypeOut,
+                                durationSec = durationOut,
+                                thumbPath = thumbPath,
+                                width = src.intValue("width"),
+                                height = src.intValue("height"),
                             )
                         }
                     }
                 }.awaitAll()
             }
 
-            val arr = JSONArray()
-            items.forEach { item ->
-                arr.put(JSONObject().apply {
-                    put("assetId",       item["assetId"])
-                    put("originAssetId", item["originAssetId"])
-                    put("mediaType",     item["mediaType"])
-                    put("thumbnailPath", item["thumbnailPath"])
-                    put("editedPath",    item["editedPath"])
-                    put("duration",      item["duration"])
-                    put("width",         item["width"])
-                    put("height",        item["height"])
-                })
-            }
+            val resultJson = ResultItemMapper.toJson(items, includeOriginId = true)
 
             if (isFinishing || isDestroyed) return@launch
             setResult(Activity.RESULT_OK, Intent().apply {
-                putExtra(MediaPickerActivity.RESULT_ITEMS,       arr.toString())
+                putExtra(MediaPickerActivity.RESULT_ITEMS,       resultJson)
                 putExtra(MediaPickerActivity.RESULT_IS_ORIGINAL, isOriginalPhoto)
             })
             if (skipTransition) {
@@ -965,31 +795,8 @@ class PreviewActivity : AppCompatActivity() {
         holder.invokePlay()
     }
 
-    private fun selectionIdOf(asset: Map<String, Any?>?): String? {
-        if (asset == null) return null
-
-        val type = asset["type"] as? String
-        if (type == "network") {
-            val coverUrl = asset["url"] as? String
-            if (coverUrl.isNullOrBlank()) return null
-            val mediaType = asset["mediaType"] as? String ?: "image"
-            val videoUrl = asset["videoUrl"] as? String ?: ""
-
-            // iOS 侧 canonical：network|mediaType=<type>|url=<cover>|videoUrl=<video>
-            val canonical = "network|mediaType=$mediaType|url=$coverUrl|videoUrl=$videoUrl"
-            val hex = sha256Hex(canonical)
-            return "network_$hex"
-        }
-
-        return (asset["assetId"] as? String)?.takeIf { it.isNotBlank() }
-            ?: (asset["url"] as? String)?.takeIf { it.isNotBlank() }
-    }
-
-    private fun sha256Hex(input: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(input.toByteArray(Charsets.UTF_8))
-        return digest.joinToString("") { byte -> "%02x".format(byte) }
-    }
+    // 稳定选择 id 的计算已抽到 AssetSelectionId（跨端单一事实源 + 单元测试守护）
+    private fun selectionIdOf(asset: Map<String, Any?>?): String? = AssetSelectionId.of(asset)
 
     private fun buildSourceFrameFromIntent(): RectF? {
         val width = intent.getFloatExtra(EXTRA_SOURCE_WIDTH, 0f)
@@ -1319,32 +1126,7 @@ class PreviewActivity : AppCompatActivity() {
             resources.displayMetrics
         ).toInt()
 
-    private fun Map<String, Any?>?.doubleValue(key: String): Double {
-        val value = this?.get(key)
-        return when (value) {
-            is Number -> value.toDouble()
-            is String -> value.toDoubleOrNull() ?: 0.0
-            else -> 0.0
-        }
-    }
-
-    private fun Map<String, Any?>?.doubleValueOrNull(key: String): Double? {
-        val value = this?.get(key) ?: return null
-        return when (value) {
-            is Number -> value.toDouble()
-            is String -> value.toDoubleOrNull()
-            else -> null
-        }
-    }
-
-    private fun Map<String, Any?>?.intValue(key: String): Int {
-        val value = this?.get(key)
-        return when (value) {
-            is Number -> value.toInt()
-            is String -> value.toIntOrNull() ?: 0
-            else -> 0
-        }
-    }
+    // 数值强转（doubleValue / doubleValueOrNull / intValue）已抽到 MediaMap.kt（可单元测试）
 
     private fun imageSizeFromFile(path: String): Pair<Int, Int>? {
         return runCatching {
@@ -1411,11 +1193,7 @@ class PreviewActivity : AppCompatActivity() {
             Glide.with(holder.zoomView.context).clear(holder.zoomView)
             holder.zoomView.resetTransform()
             // 若此 holder 正在承载 PlayerView，撤离并暂停
-            if (currentlyPlayingHolder === holder) {
-                holder.releasePlayerView()
-                exoPlayer?.pause()
-                currentlyPlayingHolder = null
-            }
+            videoController.onSurfaceRecycled(holder)
         }
     }
 
@@ -1423,7 +1201,7 @@ class PreviewActivity : AppCompatActivity() {
         itemView: View,
         val zoomView: ZoomableImageView,
         private val playBtn: ImageView
-    ) : RecyclerView.ViewHolder(itemView) {
+    ) : RecyclerView.ViewHolder(itemView), VideoSurface {
 
         private var currentPlayUri: Uri? = null
         private val container get() = itemView as FrameLayout
@@ -1465,7 +1243,7 @@ class PreviewActivity : AppCompatActivity() {
                 val clickHandler = if (playUri != null) View.OnClickListener {
                     // 点击播放按钮：内联 ExoPlayer
                     playBtn.visibility = View.GONE
-                    playVideoInHolder(this, playUri)
+                    videoController.play(this, playUri)
                 } else null
                 playBtn.setOnClickListener(clickHandler)
                 zoomView.setOnClickListener(clickHandler)
@@ -1480,7 +1258,7 @@ class PreviewActivity : AppCompatActivity() {
         fun invokePlay() {
             currentPlayUri?.let { uri ->
                 playBtn.visibility = View.GONE
-                playVideoInHolder(this, uri)
+                videoController.play(this, uri)
             }
         }
 
@@ -1488,7 +1266,7 @@ class PreviewActivity : AppCompatActivity() {
          * 将 PlayerView 附加到此 holder 的容器中（覆盖在封面帧上方）。
          * 由 Activity.playVideoInHolder() 调用，切换 holder 时自动从旧 holder 移除。
          */
-        fun attachPlayerView(pv: androidx.media3.ui.PlayerView) {
+        override fun attachPlayerView(pv: androidx.media3.ui.PlayerView) {
             (pv.parent as? ViewGroup)?.removeView(pv)
             container.addView(pv)
         }
@@ -1497,7 +1275,7 @@ class PreviewActivity : AppCompatActivity() {
          * 从此 holder 的容器中移除 PlayerView（切换页或 recycle 时调用）。
          * 移除后封面帧重新可见，播放按钮恢复显示。
          */
-        fun releasePlayerView() {
+        override fun releasePlayerView() {
             for (i in container.childCount - 1 downTo 0) {
                 if (container.getChildAt(i) is androidx.media3.ui.PlayerView) {
                     container.removeViewAt(i)
@@ -1540,9 +1318,7 @@ class PreviewActivity : AppCompatActivity() {
         private const val DISMISS_ANIM_DURATION_MS = 200L
         private const val SNAP_BACK_DURATION_MS    = 250L
         private const val ENTER_ANIM_DURATION_MS   = 240L
-        private const val DISMISS_SCALE_FACTOR     = 0.36f
-        private const val DISMISS_MIN_SCALE        = 0.60f
-        private const val DISMISS_HORIZONTAL_FACTOR = 0.35f
+        // DISMISS_SCALE_FACTOR / MIN_SCALE / HORIZONTAL_FACTOR 已移入 DismissGestureMath
         private const val ENTER_RETRY_DELAY_MS = 16L
         private const val MAX_ENTER_RETRIES = 10
     }

@@ -3,7 +3,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'live_photo_gallery'
-  s.version          = '0.1.0'
+  s.version          = '1.0.0'
   s.summary          = 'iOS & Android media picker & preview plugin for Flutter.'
   s.description      = <<-DESC
 A Flutter plugin for picking and previewing images, videos, Live Photos (iOS) and Motion Photos (Android).

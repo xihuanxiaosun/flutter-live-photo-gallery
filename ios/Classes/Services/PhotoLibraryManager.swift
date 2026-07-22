@@ -14,14 +14,8 @@ class PhotoLibraryManager: PhotoLibraryManaging {
         return manager
     }()
 
-    /// 带超时配置的 URLSession，用于所有网络图片/视频封面加载
-    /// 连接超时 15s，资源超时 30s，避免网络差时永久挂起
-    private lazy var networkSession: URLSession = {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest  = 15
-        config.timeoutIntervalForResource = 30
-        return URLSession(configuration: config)
-    }()
+    /// 网络图片加载已抽到 NetworkImageLoader（自包含 URLSession + 下采样解码）
+    private let networkImageLoader = NetworkImageLoader()
 
     private init() {}
 
@@ -591,89 +585,7 @@ class PhotoLibraryManager: PhotoLibraryManaging {
 extension PhotoLibraryManager {
 
     func loadNetworkImage(from url: URL, targetSize: CGSize? = nil, completion: @escaping (Result<UIImage, Error>) -> Void) {
-        networkSession.dataTask(with: url) { data, _, error in
-            DispatchQueue.main.async {
-                if let error = error {
-                    completion(.failure(error))
-                    return
-                }
-                guard
-                    let data = data,
-                    let image = Self.decodeNetworkImage(data: data, targetSize: targetSize)
-                else {
-                    completion(.failure(PhotoLibraryError.assetLoadFailed(
-                        underlying: NSError(domain: "PhotoLibraryManager", code: -1,
-                                            userInfo: [NSLocalizedDescriptionKey: "无法解析图片数据"])
-                    )))
-                    return
-                }
-                completion(.success(image))
-            }
-        }.resume()
+        networkImageLoader.loadNetworkImage(from: url, targetSize: targetSize, completion: completion)
     }
 
-    func loadNetworkLivePhoto(imageURL: URL, videoURL: URL, targetSize: CGSize? = nil, completion: @escaping (Result<(UIImage, URL), Error>) -> Void) {
-        loadNetworkImage(from: imageURL, targetSize: targetSize) { result in
-            switch result {
-            case .success(let image): completion(.success((image, videoURL)))
-            case .failure(let error): completion(.failure(error))
-            }
-        }
-    }
-
-    func loadNetworkVideoThumbnail(from url: URL, targetSize: CGSize? = nil, completion: @escaping (Result<UIImage, Error>) -> Void) {
-        let asset = AVURLAsset(url: url)
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        if let targetSize = targetSize { generator.maximumSize = targetSize }
-
-        // 使用 iOS 15 兼容写法（image(at:) 仅 iOS 16+）
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                var actualTime = CMTime.zero
-                let cgImage = try generator.copyCGImage(at: .zero, actualTime: &actualTime)
-                let image = UIImage(cgImage: cgImage)
-                DispatchQueue.main.async { completion(.success(image)) }
-            } catch {
-                DispatchQueue.main.async {
-                    completion(.failure(PhotoLibraryError.assetLoadFailed(underlying: error)))
-                }
-            }
-        }
-    }
-
-    // Fix: 使用 UIGraphicsImageRenderer 替代已废弃的 UIGraphicsBeginImageContextWithOptions
-    private func resizeImage(_ image: UIImage, to targetSize: CGSize) -> UIImage {
-        let ratio = min(targetSize.width / image.size.width, targetSize.height / image.size.height)
-        let newSize = CGSize(width: image.size.width * ratio, height: image.size.height * ratio)
-        return UIGraphicsImageRenderer(size: newSize).image { _ in
-            image.draw(in: CGRect(origin: .zero, size: newSize))
-        }
-    }
-
-    /// 网络图片解码：优先走下采样，避免大图直接解码带来的内存峰值风险。
-    /// - targetSize 有值：按目标尺寸*屏幕 scale 解码。
-    /// - targetSize 为空：保底限制到 4096 像素，防止超大原图触发 OOM。
-    private static func decodeNetworkImage(data: Data, targetSize: CGSize?) -> UIImage? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
-            return nil
-        }
-        let fallbackMaxPixel: CGFloat = 4096
-        let maxPixelSize: CGFloat
-        if let targetSize = targetSize, targetSize.width > 0, targetSize.height > 0 {
-            maxPixelSize = max(targetSize.width, targetSize.height) * UIScreen.main.scale
-        } else {
-            maxPixelSize = fallbackMaxPixel
-        }
-        let options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceShouldCacheImmediately: true,
-            kCGImageSourceThumbnailMaxPixelSize: max(1, Int(maxPixelSize)),
-        ]
-        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
-            return nil
-        }
-        return UIImage(cgImage: cgImage)
-    }
 }

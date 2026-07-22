@@ -50,12 +50,17 @@ enum MediaFilter {
       };
 }
 
-/// 裁剪配置（预留字段，当前版本仅传递给 native 侧，实际裁剪 UI 待后续版本实现）
+/// 裁剪配置。
+///
+/// 裁剪 UI 已在两端接入（iOS：TOCropViewController；Android：uCrop），在预览页
+/// 编辑图片时可用。**注意**：当前版本两端均为「自由裁剪」，[aspectRatioX] /
+/// [aspectRatioY] 尚未被 native 侧消费（暂不锁定比例）。传入该配置不会报错，
+/// 但比例字段目前不生效。
 class CropConfig {
-  /// 裁剪比例 X（0 = 自由裁剪）
+  /// 裁剪比例 X（0 = 自由裁剪）。当前版本未生效，见 [CropConfig] 说明。
   final double aspectRatioX;
 
-  /// 裁剪比例 Y（0 = 自由裁剪）
+  /// 裁剪比例 Y（0 = 自由裁剪）。当前版本未生效，见 [CropConfig] 说明。
   final double aspectRatioY;
 
   const CropConfig({this.aspectRatioX = 0, this.aspectRatioY = 0});
@@ -216,7 +221,8 @@ class PickerConfig {
   /// - [MediaFilter.livePhotoOnly]：仅 Live Photo / Motion Photo
   final MediaFilter filterConfig;
 
-  /// 裁剪配置（预留字段，当前版本实际裁剪 UI 未实现）。
+  /// 裁剪配置。裁剪 UI 两端均已可用（预览页编辑图片时），
+  /// 但比例字段当前未生效，详见 [CropConfig]。
   final CropConfig? cropConfig;
 
   const PickerConfig({
@@ -418,7 +424,10 @@ class LivePhotoGallery {
     ///   空串则仅保存到「最近项目」，不额外创建相册。
     String saveAlbumName = '',
   }) async {
-    if (showDownloadButton) _ensureHandlerRegistered();
+    // 无条件注册 handler：previewAssets 也可能通过 maxCount/maxVideoCount 触发
+    // onMaxCountReached，即便 showDownloadButton 为 false。此前的条件式注册会导致
+    // 「未开启下载按钮的纯预览」场景静默丢掉 onMaxCountReached 事件。
+    _ensureHandlerRegistered();
     try {
       final args = <String, dynamic>{
         'assets': assets.map((a) => a.toMap()).toList(),

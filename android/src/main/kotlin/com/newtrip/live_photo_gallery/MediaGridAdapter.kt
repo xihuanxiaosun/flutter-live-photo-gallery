@@ -38,8 +38,18 @@ class MediaGridAdapter : RecyclerView.Adapter<MediaGridAdapter.MediaViewHolder>(
         }
     var editedPathByAssetId: Map<String, String> = emptyMap()
         set(value) {
+            val old = field
             field = value
-            notifyDataSetChanged()
+            // 只刷新「编辑路径发生变化」的 item，避免 notifyDataSetChanged 全量重绑——
+            // 后者会废掉本类精心设计的 DiffUtil / PAYLOAD 防闪烁机制并触发全部 Glide 重载。
+            // 编辑图通常只有 1~2 张，逐个 notifyItemChanged 即可（需整绑以重载图片）。
+            val changedKeys = (old.keys + value.keys).filter { old[it] != value[it] }
+            if (changedKeys.isEmpty()) return
+            val list = differ.currentList
+            changedKeys.forEach { key ->
+                val idx = list.indexOfFirst { it.uri.toString() == key }
+                if (idx >= 0) notifyItemChanged(idx)
+            }
         }
     var showSelectionControls: Boolean = true
     var onItemClick:     ((MediaAsset, Int) -> Unit)? = null

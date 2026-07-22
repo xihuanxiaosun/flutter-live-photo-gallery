@@ -84,11 +84,21 @@ object AlbumHelper {
             MediaStore.Files.FileColumns.MIME_TYPE
         )
 
-        val types = mutableListOf(
-            "${MediaStore.Files.FileColumns.MEDIA_TYPE} = $MEDIA_TYPE_IMAGE"
-        )
-        if (config.enableVideo) {
+        // 相册列表的媒体类型过滤必须与 MediaStoreHelper.buildSelection 保持一致，
+        // 否则会出现「相册面板列出的相册/计数」与「宫格实际内容」不符：
+        //   - videoOnly  → 只统计视频相册（隐藏图片）
+        //   - imageOnly / livePhotoOnly → 只统计图片相册（隐藏视频）
+        //   - all        → 图片 + （enableVideo 时）视频
+        val types = mutableListOf<String>()
+        if (config.filterConfig != "videoOnly") {
+            types.add("${MediaStore.Files.FileColumns.MEDIA_TYPE} = $MEDIA_TYPE_IMAGE")
+        }
+        if (config.effectiveEnableVideo) {
             types.add("${MediaStore.Files.FileColumns.MEDIA_TYPE} = $MEDIA_TYPE_VIDEO")
+        }
+        // 兜底：至少查图片，防止 types 为空导致 SQL 错误
+        if (types.isEmpty()) {
+            types.add("${MediaStore.Files.FileColumns.MEDIA_TYPE} = $MEDIA_TYPE_IMAGE")
         }
         val selection = buildString {
             append("(${types.joinToString(" OR ")})")

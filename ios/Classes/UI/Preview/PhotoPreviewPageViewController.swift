@@ -244,33 +244,14 @@ class SinglePhotoViewController: UIViewController {
     }
 
     private func loadNetworkImage(_ url: URL, mediaType: PhotoAssetModel.MediaType) {
-        switch mediaType {
-        case .image:
-            PhotoLibraryManager.shared.loadNetworkImage(from: url) { [weak self] result in
-                DispatchQueue.main.async {
-                    self?.loadingIndicator.stopAnimating()
-                    if case .success(let image) = result {
-                        self?.imageView.image = image
-                    }
-                }
-            }
-        case .video:
-            // 网络视频封面 URL（MediaAssetInput.url）用于展示缩略图；播放使用 videoUrl。
-            PhotoLibraryManager.shared.loadNetworkImage(from: url) { [weak self] result in
-                DispatchQueue.main.async {
-                    self?.loadingIndicator.stopAnimating()
-                    if case .success(let image) = result {
-                        self?.imageView.image = image
-                    }
-                }
-            }
-        case .livePhoto:
-            PhotoLibraryManager.shared.loadNetworkImage(from: url) { [weak self] result in
-                DispatchQueue.main.async {
-                    self?.loadingIndicator.stopAnimating()
-                    if case .success(let image) = result {
-                        self?.imageView.image = image
-                    }
+        // 三种 mediaType 的网络封面加载逻辑相同：拉取封面图展示。
+        // （视频/实况的播放另走 videoUrl，与此处封面加载无关。）
+        _ = mediaType
+        PhotoLibraryManager.shared.loadNetworkImage(from: url) { [weak self] result in
+            DispatchQueue.main.async {
+                self?.loadingIndicator.stopAnimating()
+                if case .success(let image) = result {
+                    self?.imageView.image = image
                 }
             }
         }
@@ -456,6 +437,10 @@ class SinglePhotoViewController: UIViewController {
 
     // MARK: - Live Photo 播放
 
+    /// Live Photo 播放代次：每次 stopVideo() 自增，用于作废进行中的异步抽帧回调，
+    /// 防止手指抬起后抽帧才完成、Live Photo 突然自行播放且无法停止。
+    private var playbackGeneration = 0
+
     func playLivePhoto() {
         guard asset.isLivePhoto, !isPlaying else { return }
 
@@ -489,15 +474,19 @@ class SinglePhotoViewController: UIViewController {
             return
         }
 
+        // 记录本次播放代次；抬指(stopVideo)会自增代次，使下面的异步回调作废
+        let generation = playbackGeneration
         LivePhotoExtractor.shared.extractVideo(from: asset) { [weak self] result in
             guard let self = self else { return }
 
             switch result {
             case .success(let url):
                 DispatchQueue.main.async {
+                    // 手指已抬起（stopVideo 已自增代次）则丢弃本次抽帧结果，不再播放
+                    guard self.playbackGeneration == generation else { return }
                     self.playVideoDirectly(url: url)
                 }
-            case .failure(let error):
+            case .failure:
                 DispatchQueue.main.async {
                     self.isPlaying = false
                 }
@@ -540,6 +529,9 @@ class SinglePhotoViewController: UIViewController {
     }
 
     func stopVideo() {
+        // 自增播放代次，作废任何仍在进行中的 Live Photo 抽帧回调（见 playPhotoLibraryLivePhoto）
+        playbackGeneration &+= 1
+
         // statusObservation 设为 nil 即自动从对应的 AVPlayerItem 移除观察者
         // 无论 playerItem 是否已替换，都不会崩溃
         statusObservation = nil
@@ -1030,19 +1022,13 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
         }
     }
 
+    // 下拉手势数学已抽到 DismissGestureMath（纯，view.bounds.height 作参数传入）
     private func dismissProgress(for translationY: CGFloat) -> CGFloat {
-        let normalizedDistance = max(view.bounds.height * 0.85, 1)
-        return min(max(translationY / normalizedDistance, 0), 1)
+        DismissGestureMath.progress(translationY: translationY, viewHeight: view.bounds.height)
     }
 
     private func interactiveDismissTransform(for translation: CGPoint) -> CGAffineTransform {
-        let verticalTranslation = max(translation.y, 0)
-        let progress = dismissProgress(for: verticalTranslation)
-        let scale = max(0.58, 1.0 - (progress * 0.42))
-        let horizontalTranslation = progress > 0 ? translation.x * 0.98 : 0
-
-        return CGAffineTransform(translationX: horizontalTranslation, y: verticalTranslation)
-            .scaledBy(x: scale, y: scale)
+        DismissGestureMath.transform(translation: translation, viewHeight: view.bounds.height)
     }
     
     private func updateUI() {
@@ -1067,12 +1053,12 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
 
         if config.showRadio, let index = selectedAssets.firstIndex(where: { $0.id == currentAsset.id }) {
             selectButton.setImage(
-                createNumberImage(number: index + 1, color: view.tintColor),
+                SelectionBadgeRenderer.number(index + 1, color: view.tintColor),
                 for: .selected
             )
         } else {
-            selectButton.setImage(createCircleImage(filled: false, color: .white), for: .normal)
-            selectButton.setImage(createCircleImage(filled: true, color: view.tintColor), for: .selected)
+            selectButton.setImage(SelectionBadgeRenderer.circle(filled: false, color: .white), for: .normal)
+            selectButton.setImage(SelectionBadgeRenderer.circle(filled: true, color: view.tintColor), for: .selected)
         }
 
         // 下载按钮：仅支持“网络图片”保存到相册（对齐 README 行为约定）
@@ -1518,18 +1504,24 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
             selectedAssets.remove(at: index)
             currentAsset.isSelected = false
         } else {
-            if selectedAssets.count >= config.maxCount {
+            let isVideoOrLive = currentAsset.isVideo || currentAsset.isLivePhoto
+            let currentVideoCount = selectedAssets.filter { $0.isVideo || $0.isLivePhoto }.count
+            switch SelectionLimits.canAdd(
+                currentCount: selectedAssets.count,
+                maxCount: config.maxCount,
+                currentVideoCount: currentVideoCount,
+                maxVideoCount: config.maxVideoCount,
+                isVideoOrLive: isVideoOrLive
+            ) {
+            case .maxCount:
                 onMaxCountReached?(config.maxCount)
                 showAlert(message: "最多只能选择 \(config.maxCount) 张照片")
                 return
-            }
-            // maxVideoCount 限制：-1 = 无限制
-            if config.maxVideoCount >= 0 && (currentAsset.isVideo || currentAsset.isLivePhoto) {
-                let currentVideoCount = selectedAssets.filter { $0.isVideo || $0.isLivePhoto }.count
-                if currentVideoCount >= config.maxVideoCount {
-                    showAlert(message: "最多只能选择 \(config.maxVideoCount) 个视频/实况照片")
-                    return
-                }
+            case .maxVideo:
+                showAlert(message: "最多只能选择 \(config.maxVideoCount) 个视频/实况照片")
+                return
+            case .ok:
+                break
             }
             selectedAssets.append(currentAsset)
             currentAsset.isSelected = true
@@ -1544,18 +1536,53 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
         guard !allAssets.isEmpty, currentIndex < allAssets.count else { return }
         let asset = allAssets[currentIndex]
 
-        var activityItems: [Any] = []
         switch asset.sourceType {
         case .network(let url, _):
-            activityItems = [url]
-        case .photoLibrary(let phAsset):
-            // PHAsset 通过 UIActivityItemSource 协议可直接传递给 UIActivityViewController
-            activityItems = [phAsset]
+            presentShare(items: [url])
         case .localFile(let url, _):
-            activityItems = [url]
+            presentShare(items: [url])
+        case .photoLibrary(let phAsset):
+            // PHAsset 不符合 UIActivityItemSource，直接分享会导致接收方拿不到任何内容。
+            // 先异步取出可分享的 UIImage / 视频文件 URL，再弹分享面板。
+            shareLibraryAsset(phAsset)
         }
+    }
 
-        let activityVC = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    /// 从相册资源取出可分享内容后再弹分享面板（图片→UIImage，视频→文件 URL）
+    private func shareLibraryAsset(_ phAsset: PHAsset) {
+        if phAsset.mediaType == .video {
+            let options = PHVideoRequestOptions()
+            options.isNetworkAccessAllowed = true
+            options.deliveryMode = .highQualityFormat
+            PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { [weak self] avAsset, _, _ in
+                let url = (avAsset as? AVURLAsset)?.url
+                DispatchQueue.main.async {
+                    guard let self = self, let url = url else { return }
+                    self.presentShare(items: [url])
+                }
+            }
+        } else {
+            let options = PHImageRequestOptions()
+            options.isNetworkAccessAllowed = true
+            options.deliveryMode = .highQualityFormat
+            PHImageManager.default().requestImage(
+                for: phAsset,
+                targetSize: PHImageManagerMaximumSize,
+                contentMode: .aspectFit,
+                options: options
+            ) { [weak self] image, info in
+                // 忽略 opportunistic 先返回的降质图，只用最终高清图，避免弹两次分享面板
+                if (info?[PHImageResultIsDegradedKey] as? Bool) ?? false { return }
+                DispatchQueue.main.async {
+                    guard let self = self, let image = image else { return }
+                    self.presentShare(items: [image])
+                }
+            }
+        }
+    }
+
+    private func presentShare(items: [Any]) {
+        let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
         if let popover = activityVC.popoverPresentationController {
             popover.sourceView = shareButton
             popover.sourceRect = shareButton.bounds
@@ -1647,57 +1674,6 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
         present(alert, animated: true)
     }
     
-    private func createCircleImage(filled: Bool, color: UIColor) -> UIImage? {
-        let size = CGSize(width: 30, height: 30)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        
-        return renderer.image { context in
-            if filled {
-                color.setFill()
-                let circle = UIBezierPath(ovalIn: CGRect(x: 3, y: 3, width: 24, height: 24))
-                circle.fill()
-                
-                UIColor.white.setStroke()
-                let checkmark = UIBezierPath()
-                checkmark.move(to: CGPoint(x: 10, y: 15))
-                checkmark.addLine(to: CGPoint(x: 13, y: 18))
-                checkmark.addLine(to: CGPoint(x: 20, y: 11))
-                checkmark.lineWidth = 2
-                checkmark.lineCapStyle = .round
-                checkmark.stroke()
-            } else {
-                UIColor.white.setStroke()
-                let circle = UIBezierPath(ovalIn: CGRect(x: 3, y: 3, width: 24, height: 24))
-                circle.lineWidth = 2
-                circle.stroke()
-            }
-        }
-    }
-    
-    private func createNumberImage(number: Int, color: UIColor) -> UIImage? {
-        let size = CGSize(width: 30, height: 30)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        
-        return renderer.image { context in
-            color.setFill()
-            let circle = UIBezierPath(ovalIn: CGRect(x: 3, y: 3, width: 24, height: 24))
-            circle.fill()
-            
-            let text = "\(number)"
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 14, weight: .bold),
-                .foregroundColor: UIColor.white
-            ]
-            let textSize = text.size(withAttributes: attributes)
-            let textRect = CGRect(
-                x: (30 - textSize.width) / 2,
-                y: (30 - textSize.height) / 2,
-                width: textSize.width,
-                height: textSize.height
-            )
-            text.draw(in: textRect, withAttributes: attributes)
-        }
-    }
 }
 
 // MARK: - UIPageViewControllerDelegate & DataSource

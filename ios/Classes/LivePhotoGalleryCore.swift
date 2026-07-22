@@ -84,6 +84,16 @@ class LivePhotoGalleryCore {
         }
 
         let assets = PluginBridge.parseAssets(from: assetDicts)
+        // 所有 asset 解析失败（网络 URL 非法 / 本地 assetId 已失效）时，assets 为空。
+        // 若继续构造预览页，initialIndex 会被 clamp 到 0，用空数组 + index 0 初始化，
+        // 越界崩溃/白屏。此处与空选择等价，直接成功返回。
+        guard !assets.isEmpty else {
+            completion(.success([
+                "items": [] as [[String: Any]],
+                "isOriginalPhoto": false,
+            ] as [String: Any]))
+            return
+        }
         let initialIndex = max(0, min(args["initialIndex"] as? Int ?? 0, assets.count - 1))
         let config = PluginBridge.parsePickerConfig(from: args)
         let sourceFrame = PluginBridge.parseSourceFrame(from: args["sourceFrame"] as? [String: Any])

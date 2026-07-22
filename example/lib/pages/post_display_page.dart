@@ -159,10 +159,10 @@ class _PostDisplayPageState extends State<PostDisplayPage> {
   // 单图大展示
   Widget _buildSingleImage(int index) {
     final item = widget.items[index];
-    return GestureDetector(
-      onTap: () => _tapAt(index),
-      child: Builder(builder: (ctx) {
-        return AspectRatio(
+    return Builder(builder: (ctx) {
+      return GestureDetector(
+        onTap: () => _tapAt(index, ctx),
+        child: AspectRatio(
           aspectRatio: item.width > 0 && item.height > 0
               ? item.width / item.height
               : 4 / 3,
@@ -185,18 +185,18 @@ class _PostDisplayPageState extends State<PostDisplayPage> {
                 ),
             ],
           ),
-        );
-      }),
-    );
+        ),
+      );
+    });
   }
 
   // 宫格单格
   Widget _buildThumbnail(int index, {required double aspectRatio}) {
     final item = widget.items[index];
-    return GestureDetector(
-      onTap: () => _tapAt(index),
-      child: Builder(builder: (ctx) {
-        return AspectRatio(
+    return Builder(builder: (ctx) {
+      return GestureDetector(
+        onTap: () => _tapAt(index, ctx),
+        child: AspectRatio(
           aspectRatio: aspectRatio,
           child: Stack(
             fit: StackFit.expand,
@@ -217,22 +217,20 @@ class _PostDisplayPageState extends State<PostDisplayPage> {
                 ),
             ],
           ),
-        );
-      }),
-    );
+        ),
+      );
+    });
   }
 
-  void _tapAt(int index) {
-    final ctx = context;
-    // 找到点击格子的 RenderBox 计算 sourceFrame
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final box = ctx.findRenderObject() as RenderBox?;
-      final frame = box != null
-          ? box.localToGlobal(Offset.zero) & box.size
-          : Rect.zero;
-      _previewAt(index, frame);
-    });
-    _previewAt(index, Rect.zero);
+  void _tapAt(int index, BuildContext cellContext) {
+    // 用「被点击格子」自身的 RenderBox 计算 sourceFrame。
+    // 此前用的是整页 State 的 context → 起点错成整页；且额外立即调用一次
+    // _previewAt(Rect.zero) 会重复打开预览页。点击时格子已完成布局，无需 postFrame。
+    final box = cellContext.findRenderObject() as RenderBox?;
+    final frame = (box != null && box.hasSize)
+        ? box.localToGlobal(Offset.zero) & box.size
+        : Rect.zero;
+    _previewAt(index, frame);
   }
 
   Widget _placeholder() => Container(

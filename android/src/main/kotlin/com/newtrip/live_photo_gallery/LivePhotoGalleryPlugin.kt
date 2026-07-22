@@ -349,7 +349,10 @@ class LivePhotoGalleryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         permissions: Array<out String>,
         grantResults: IntArray
     ): Boolean {
-        val granted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+        // 用实际权限状态判断「是否可用」，而非要求所有请求项全部授予：
+        // Android 14「仅选择照片」只会授予 VISUAL_USER_SELECTED，grantResults.all{} 会误判为拒绝，
+        // 导致 picker 打不开。hasMediaPermission() 已把「部分访问」也算作可用。
+        val granted = hasMediaPermission()
 
         return when (requestCode) {
 
@@ -403,16 +406,21 @@ class LivePhotoGalleryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
     private fun currentPermissionStatus(): String {
         val ctx = context ?: return "denied"
 
-        // Android 14+（API 34）：检查部分访问权限
+        // Android 14+（API 34）：先判「完整访问」，再判「部分/仅选择的照片」。
+        // 顺序不能反——完整访问时系统也可能报告 VISUAL_USER_SELECTED 为已授予，
+        // 若先判部分会把完整权限误判为 limited。
         if (Build.VERSION.SDK_INT >= 34) {
+            val fullAccess =
+                ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
+            if (fullAccess) return "authorized"
             val visualUserSelected = ContextCompat.checkSelfPermission(
                 ctx, android.Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
             )
             if (visualUserSelected == PackageManager.PERMISSION_GRANTED) return "limited"
+        } else if (hasMediaPermission()) {
+            return "authorized"
         }
-
-        // 完整权限
-        if (hasMediaPermission()) return "authorized"
 
         // 区分 "notDetermined"（从未请求）与 "denied"（拒绝过）
         // shouldShowRequestPermissionRationale = false 且无权限 → 两种可能：
@@ -423,15 +431,33 @@ class LivePhotoGalleryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         return if (hasRequested) "denied" else "notDetermined"
     }
 
+    /**
+     * 是否已获得「可用的」相册访问权限。
+     * Android 14+：完整（IMAGES + VIDEO）**或** 部分（仅选择的照片 VISUAL_USER_SELECTED）
+     * 都视为可用；否则「仅选择照片」模式会因这里返回 false 而反复弹窗、picker 永远打不开。
+     */
     private fun hasMediaPermission(): Boolean {
         val ctx = context ?: return false
-        return requiredPermissions().all {
-            ContextCompat.checkSelfPermission(ctx, it) == PackageManager.PERMISSION_GRANTED
+        fun granted(p: String) =
+            ContextCompat.checkSelfPermission(ctx, p) == PackageManager.PERMISSION_GRANTED
+        return when {
+            Build.VERSION.SDK_INT >= 34 ->
+                (granted(Manifest.permission.READ_MEDIA_IMAGES) &&
+                    granted(Manifest.permission.READ_MEDIA_VIDEO)) ||
+                    granted(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+            else ->
+                requiredPermissions().all { granted(it) }
         }
     }
 
     private fun requiredPermissions(): Array<String> = when {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ->  // API 33+
+        Build.VERSION.SDK_INT >= 34 ->                             // Android 14+：支持「仅选择的照片」部分访问
+            arrayOf(
+                Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VIDEO,
+                Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
+            )
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ->  // API 33
             arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->          // API 29-32
             arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)

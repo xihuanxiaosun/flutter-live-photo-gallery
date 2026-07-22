@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Rect
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.text.TextUtils
@@ -36,7 +35,6 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.util.FixedPreloadSizeProvider
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import kotlinx.coroutines.Dispatchers
@@ -77,9 +75,8 @@ class MediaPickerActivity : AppCompatActivity() {
     private lateinit var chipAll:        Chip
     private lateinit var chipImage:      Chip
     private lateinit var chipVideo:      Chip
-    private lateinit var titleContainer: LinearLayout
-    private lateinit var titleTextView:  TextView
-    private lateinit var titleArrowView: ImageView
+    // 工具栏自定义标题已抽到 ToolbarTitleController
+    private val toolbarTitle by lazy { ToolbarTitleController(this, toolbar) { showAlbumPicker() } }
 
     // ──────────────────────────────────────────────
     // 状态
@@ -101,10 +98,11 @@ class MediaPickerActivity : AppCompatActivity() {
     // 相册
     private var albums: List<AlbumItem> = emptyList()
     private var currentBucketId: Long = AlbumHelper.ALL_BUCKET_ID
-    private var albumSheetDialog: BottomSheetDialog? = null
+    // 相册选择弹层已抽到 AlbumBottomSheet
+    private val albumSheet by lazy { AlbumBottomSheet(this) }
 
     // 分类筛选
-    private enum class MediaFilter { ALL, IMAGE, VIDEO }
+    // MediaFilter 已提为顶层（见 AssetFilter.kt）
     private var currentFilter = MediaFilter.ALL
 
     // 长按预览：记录最后进入预览的位置，返回时恢复滚动
@@ -198,9 +196,7 @@ class MediaPickerActivity : AppCompatActivity() {
 
     /** Toolbar：标题可点击切换相册，关闭按钮 */
     private fun setupToolbar() {
-        toolbar.title = ""
-        ensureToolbarTitleView()
-        updateToolbarTitle("所有照片")
+        toolbarTitle.setup("所有照片")
         toolbar.setNavigationOnClickListener {
             setResult(Activity.RESULT_CANCELED)
             finish()
@@ -208,59 +204,9 @@ class MediaPickerActivity : AppCompatActivity() {
         toolbar.setOnClickListener { showAlbumPicker() }
     }
 
-    private fun ensureToolbarTitleView() {
-        if (::titleContainer.isInitialized) return
+    private fun updateToolbarTitle(title: String) = toolbarTitle.setTitle(title)
 
-        titleTextView = TextView(this).apply {
-            setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurface))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            includeFontPadding = false
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-        }
-        titleArrowView = ImageView(this).apply {
-            setImageResource(R.drawable.ic_expand_more)
-            imageTintList = ColorStateList.valueOf(
-                resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant)
-            )
-        }
-        titleContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            minimumHeight = dp(40)
-            background = resolveSelectableItemBackgroundBorderless()
-            isClickable = true
-            isFocusable = true
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            addView(titleTextView)
-            addView(titleArrowView, LinearLayout.LayoutParams(dp(20), dp(20)).apply {
-                marginStart = dp(2)
-            })
-            setOnClickListener { showAlbumPicker() }
-        }
-        // 子 View 不单独设置 clickListener，触摸事件由 titleContainer 统一处理
-
-        toolbar.addView(
-            titleContainer,
-            Toolbar.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER
-            )
-        )
-    }
-
-    private fun updateToolbarTitle(title: String) {
-        titleTextView.text = title
-    }
-
-    private fun setAlbumPopupExpanded(expanded: Boolean) {
-        titleArrowView.animate()
-            .rotation(if (expanded) 180f else 0f)
-            .setDuration(160L)
-            .start()
-    }
+    private fun setAlbumPopupExpanded(expanded: Boolean) = toolbarTitle.setExpanded(expanded)
 
     private fun setupRecyclerView() {
         val layoutManager = GridLayoutManager(this, MediaGridAdapter.GRID_COLUMNS)
@@ -351,16 +297,11 @@ class MediaPickerActivity : AppCompatActivity() {
             Toast.makeText(this, "相册加载中，请稍后重试", Toast.LENGTH_SHORT).show()
             return
         }
-        albumSheetDialog?.dismiss()
-
-        val sheetHeight = minOf(dp(420), albums.size * dp(72) + dp(32))
-        val popupContent = RecyclerView(this).apply {
-            layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this@MediaPickerActivity)
-            overScrollMode = View.OVER_SCROLL_NEVER
-            setPadding(0, dp(8), 0, dp(16))
-            clipToPadding = false
-            adapter = AlbumAdapter(albums, currentBucketId) { selected ->
-                albumSheetDialog?.dismiss()
+        setAlbumPopupExpanded(true)
+        albumSheet.show(
+            albums = albums,
+            currentBucketId = currentBucketId,
+            onAlbumSelected = { selected ->
                 if (selected.bucketId != currentBucketId) {
                     currentBucketId = selected.bucketId
                     updateToolbarTitle(selected.displayName)
@@ -368,44 +309,17 @@ class MediaPickerActivity : AppCompatActivity() {
                     currentFilter = MediaFilter.ALL
                     selectedAssets.clear()
                     editedPathByAssetId.clear()
-                    this@MediaPickerActivity.adapter.selectedAssets = emptyList()
-                    this@MediaPickerActivity.adapter.editedPathByAssetId = emptyMap()
+                    adapter.selectedAssets = emptyList()
+                    adapter.editedPathByAssetId = emptyMap()
                     isOriginalPhoto = false
                     updateOriginalButton()
                     updateDoneButton()
                     chipAll.isChecked = true
                     loadAssets()
                 }
-            }
-        }
-
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(24).toFloat()
-                setColor(resolveThemeColor(com.google.android.material.R.attr.colorSurface))
-            }
-            addView(
-                popupContent,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    sheetHeight,
-                )
-            )
-        }
-
-        val dialog = BottomSheetDialog(this).apply {
-            setContentView(container)
-            setCanceledOnTouchOutside(true)
-            setOnDismissListener {
-                setAlbumPopupExpanded(false)
-                albumSheetDialog = null
-            }
-        }
-        albumSheetDialog = dialog
-        setAlbumPopupExpanded(true)
-        dialog.show()
+            },
+            onDismiss = { setAlbumPopupExpanded(false) },
+        )
     }
 
     // ──────────────────────────────────────────────
@@ -457,11 +371,7 @@ class MediaPickerActivity : AppCompatActivity() {
 
     /** 根据当前 currentFilter 过滤 allAssets 并提交到 adapter */
     private fun applyFilter() {
-        filteredAssets = when (currentFilter) {
-            MediaFilter.IMAGE -> allAssets.filter { it.mediaType == "image" }
-            MediaFilter.VIDEO -> allAssets.filter { it.mediaType == "video" }
-            MediaFilter.ALL   -> allAssets
-        }
+        filteredAssets = AssetFilter.filter(allAssets, currentFilter)
         adapter.selectedAssets = selectedAssets.toList()
         adapter.editedPathByAssetId = editedPathByAssetId
         adapter.submitList(filteredAssets)
@@ -481,23 +391,29 @@ class MediaPickerActivity : AppCompatActivity() {
             adapter.updateSelectionState(position)
             refreshSelectionNumbers()
         } else {
-            if (selectedAssets.size >= config.maxCount) {
-                // 通知 Flutter 侧 onMaxCountReached
-                LivePhotoGalleryPlugin.getChannel(engineKey)?.invokeMethod(
-                    "onMaxCountReached",
-                    mapOf("maxCount" to config.maxCount)
-                )
-                Toast.makeText(this, "最多只能选择 ${config.maxCount} 张", Toast.LENGTH_SHORT).show()
-                return
-            }
-            // maxVideoCount 限制：-1 = 无限制
             val isVideoOrLive = asset.mediaType == "video" || asset.isMotionPhoto
-            if (config.maxVideoCount >= 0 && isVideoOrLive) {
-                val currentVideoCount = selectedAssets.count { it.mediaType == "video" || it.isMotionPhoto }
-                if (currentVideoCount >= config.maxVideoCount) {
+            val currentVideoCount = selectedAssets.count { it.mediaType == "video" || it.isMotionPhoto }
+            when (SelectionLimits.canAdd(
+                currentCount = selectedAssets.size,
+                maxCount = config.maxCount,
+                currentVideoCount = currentVideoCount,
+                maxVideoCount = config.maxVideoCount,
+                isVideoOrLive = isVideoOrLive,
+            )) {
+                SelectionLimits.Result.MAX_COUNT -> {
+                    // 通知 Flutter 侧 onMaxCountReached
+                    LivePhotoGalleryPlugin.getChannel(engineKey)?.invokeMethod(
+                        "onMaxCountReached",
+                        mapOf("maxCount" to config.maxCount)
+                    )
+                    Toast.makeText(this, "最多只能选择 ${config.maxCount} 张", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                SelectionLimits.Result.MAX_VIDEO -> {
                     Toast.makeText(this, "最多只能选择 ${config.maxVideoCount} 个视频/动态照片", Toast.LENGTH_SHORT).show()
                     return
                 }
+                SelectionLimits.Result.OK -> Unit
             }
             selectedAssets.add(asset)
             adapter.selectedAssets = selectedAssets.toList()
@@ -567,9 +483,9 @@ class MediaPickerActivity : AppCompatActivity() {
         assets.forEach { a ->
             arr.put(JSONObject().apply {
                 put("assetId",   a.uri.toString())
-                // 对齐 iOS：Live Photo 返回 "livePhoto" 而非 "image"
-                put("mediaType", if (a.isMotionPhoto) "livePhoto" else a.mediaType)
-                put("duration", if (a.mediaType == "video") a.duration / 1000.0 else null)
+                // livePhoto/duration 派生统一走 ResultItemMapper（已测的单一事实源）
+                put("mediaType", ResultItemMapper.outMediaType(a.mediaType, a.isMotionPhoto))
+                put("duration",  ResultItemMapper.outDuration(a.mediaType, a.duration))
                 put("width",     a.width)
                 put("height",    a.height)
                 editedPathByAssetId[a.uri.toString()]?.let { put("editedPath", it) }
@@ -651,36 +567,25 @@ class MediaPickerActivity : AppCompatActivity() {
                                 ExportHelper.saveThumbnail(this@MediaPickerActivity, asset, 200, 200)
                             }
                         }.getOrDefault("")
-                        val outDuration = if (asset.mediaType == "video") asset.duration / 1000.0 else null
-                        mapOf(
-                            "assetId"       to (editedPath ?: asset.uri.toString()),
-                            // 对齐 iOS：Live Photo 返回 "livePhoto" 而非 "image"
-                            "mediaType"     to if (asset.isMotionPhoto) "livePhoto" else asset.mediaType,
-                            "thumbnailPath" to thumbPath,
-                            "editedPath"    to editedPath,
-                            "duration"      to outDuration,
-                            "width"         to asset.width,
-                            "height"        to asset.height
+                        ResultItemMapper.localItem(
+                            originAssetId = asset.uri.toString(),
+                            editedPath = editedPath,
+                            mediaType = asset.mediaType,
+                            isMotionPhoto = asset.isMotionPhoto,
+                            durationMs = asset.duration,
+                            thumbPath = thumbPath,
+                            width = asset.width,
+                            height = asset.height,
+                            includeOriginId = false,
                         )
                     }
                 }.awaitAll()
             }
 
-            val arr = JSONArray()
-            items.forEach { item ->
-                arr.put(JSONObject().apply {
-                    put("assetId",       item["assetId"])
-                    put("mediaType",     item["mediaType"])
-                    put("thumbnailPath", item["thumbnailPath"])
-                    put("editedPath",    item["editedPath"])
-                    put("duration",      item["duration"])
-                    put("width",         item["width"])
-                    put("height",        item["height"])
-                })
-            }
+            val resultJson = ResultItemMapper.toJson(items, includeOriginId = false)
 
             setResult(Activity.RESULT_OK, Intent().apply {
-                putExtra(RESULT_ITEMS,       arr.toString())
+                putExtra(RESULT_ITEMS,       resultJson)
                 putExtra(RESULT_IS_ORIGINAL, isOriginalPhoto)
             })
             finish()
@@ -691,81 +596,13 @@ class MediaPickerActivity : AppCompatActivity() {
     // 工具
     // ──────────────────────────────────────────────
 
-    /** 从预览页返回的 JSON 中解析已选 assetId 列表 */
-    private fun parseSelectedIds(json: String): List<String> {
-        return runCatching {
-            val arr = JSONArray(json)
-            (0 until arr.length()).map { i ->
-                val obj = arr.getJSONObject(i)
-                obj.optString("originAssetId").ifBlank { obj.optString("assetId") }
-            }
-                .filter { it.isNotBlank() }
-        }.getOrDefault(emptyList())
-    }
-
-    /** 从预览页返回 JSON 解析每个 assetId 对应的 editedPath */
-    private fun parseEditedPaths(json: String): Map<String, String> {
-        return runCatching {
-            val arr = JSONArray(json)
-            buildMap {
-                for (i in 0 until arr.length()) {
-                    val obj = arr.getJSONObject(i)
-                    val id = obj.optString("originAssetId").ifBlank { obj.optString("assetId") }
-                    val edited = obj.optString("editedPath")
-                    if (id.isNotBlank() && edited.isNotBlank()) put(id, edited)
-                }
-            }
-        }.getOrDefault(emptyMap())
-    }
+    // 预览返回 JSON 的解析已抽到 PreviewResultParser（纯逻辑 + 单元测试守护）
+    private fun parseSelectedIds(json: String): List<String> = PreviewResultParser.selectedIds(json)
+    private fun parseEditedPaths(json: String): Map<String, String> = PreviewResultParser.editedPaths(json)
 
     // ──────────────────────────────────────────────
     // 相册列表 Adapter（内部类，无需独立文件）
     // ──────────────────────────────────────────────
-
-    private inner class AlbumAdapter(
-        private val items: List<AlbumItem>,
-        private val activeBucketId: Long,
-        val onSelect: (AlbumItem) -> Unit
-    ) : RecyclerView.Adapter<AlbumViewHolder>() {
-
-        override fun getItemCount() = items.size
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): AlbumViewHolder {
-            val view = LayoutInflater.from(parent.context)
-                .inflate(R.layout.item_album, parent, false)
-            return AlbumViewHolder(view)
-        }
-
-        override fun onBindViewHolder(holder: AlbumViewHolder, position: Int) {
-            holder.bind(items[position], activeBucketId)
-        }
-    }
-
-    private inner class AlbumViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        private val cover: ImageView  = itemView.findViewById(R.id.iv_album_cover)
-        private val name:  TextView   = itemView.findViewById(R.id.tv_album_name)
-        private val count: TextView   = itemView.findViewById(R.id.tv_album_count)
-        private val check: ImageView  = itemView.findViewById(R.id.iv_album_check)
-
-        fun bind(item: AlbumItem, activeBucketId: Long) {
-            name.text  = item.displayName
-            count.text = item.count.toString()
-            check.visibility = if (item.bucketId == activeBucketId) View.VISIBLE else View.GONE
-
-            Glide.with(cover.context)
-                .load(item.coverUri)
-                .override(56, 56)
-                .centerCrop()
-                .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
-                .into(cover)
-
-            itemView.setOnClickListener {
-                (bindingAdapter as? AlbumAdapter)?.let { adapter ->
-                    adapter.onSelect(item)
-                }
-            }
-        }
-    }
 
     // ──────────────────────────────────────────────
     // 常量

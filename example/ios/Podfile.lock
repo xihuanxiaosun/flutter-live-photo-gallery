@@ -1,12 +1,15 @@
 PODS:
   - Flutter (1.0.0)
-  - live_photo_gallery (0.1.0):
+  - integration_test (0.0.1):
+    - Flutter
+  - live_photo_gallery (1.0.0):
     - Flutter
     - TOCropViewController (~> 3.1)
   - TOCropViewController (3.1.2)
 
 DEPENDENCIES:
   - Flutter (from `Flutter`)
+  - integration_test (from `.symlinks/plugins/integration_test/ios`)
   - live_photo_gallery (from `.symlinks/plugins/live_photo_gallery/ios`)
 
 SPEC REPOS:
@@ -16,12 +19,15 @@ SPEC REPOS:
 EXTERNAL SOURCES:
   Flutter:
     :path: Flutter
+  integration_test:
+    :path: ".symlinks/plugins/integration_test/ios"
   live_photo_gallery:
     :path: ".symlinks/plugins/live_photo_gallery/ios"
 
 SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  live_photo_gallery: 13ea6e48d182dc2cec20e4d86e85a2b24184763a
+  integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
+  live_photo_gallery: 634d653a72d04c75ff392856922a83a9a5631d44
   TOCropViewController: a916930c465b5d9445a74d95e0c0da931771b4df
 
 PODFILE CHECKSUM: ce2a4dd764e1c7aeed6a7cdc5e61d092b6dc6d32

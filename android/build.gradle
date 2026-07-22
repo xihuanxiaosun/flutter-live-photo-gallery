@@ -1,5 +1,5 @@
 group 'com.newtrip.live_photo_gallery'
-version '1.0'
+version '1.0.0'
 
 buildscript {
     ext.kotlin_version = '1.9.22'
@@ -60,7 +60,23 @@ dependencies {
     if (project.hasProperty('flutter.sdk')) {
         compileOnly 'io.flutter:flutter_embedding_debug:1.0.0-3.27.0'
     } else {
-        def flutterSdk = System.env.FLUTTER_ROOT ?: "${System.env.HOME}/Downloads/flutter"
+        // 独立编译（未嵌入 Flutter 工程）时回退到本地 flutter.jar。
+        // 优先 FLUTTER_ROOT，其次从 PATH 上的 flutter 可执行文件推导，
+        // 避免此前硬编码的 "~/Downloads/flutter"（对其他机器一定错）。
+        def flutterSdk = System.env.FLUTTER_ROOT
+        if (!flutterSdk) {
+            def whichFlutter = 'which flutter'.execute().text.trim()
+            if (whichFlutter) {
+                // 解析符号链接后取 .../flutter/bin/flutter 的上两级目录
+                flutterSdk = new File(whichFlutter).canonicalFile.parentFile.parentFile.path
+            }
+        }
+        if (!flutterSdk) {
+            throw new GradleException(
+                '未找到 Flutter SDK：请设置 FLUTTER_ROOT 环境变量，或将 flutter 加入 PATH。' +
+                '（仅在独立编译本插件的 android 工程时需要；正常随 Flutter 工程编译时走 flutter.sdk 分支。）'
+            )
+        }
         def flutterJar = "${flutterSdk}/bin/cache/artifacts/engine/android-x64/flutter.jar"
         compileOnly files(flutterJar)
     }

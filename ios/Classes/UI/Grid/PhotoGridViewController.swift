@@ -389,18 +389,24 @@ class PhotoGridViewController: UIViewController {
             asset.isSelected = false
             selectedAssets.removeAll { $0.id == asset.id }
         } else {
-            guard selectedAssets.count < config.maxCount else {
+            let isVideoOrLive = asset.isVideo || asset.isLivePhoto
+            let currentVideoCount = selectedAssets.filter { $0.isVideo || $0.isLivePhoto }.count
+            switch SelectionLimits.canAdd(
+                currentCount: selectedAssets.count,
+                maxCount: config.maxCount,
+                currentVideoCount: currentVideoCount,
+                maxVideoCount: config.maxVideoCount,
+                isVideoOrLive: isVideoOrLive
+            ) {
+            case .maxCount:
                 onMaxCountReached?(config.maxCount)
                 showAlert(message: "最多只能选择 \(config.maxCount) 张照片")
                 return
-            }
-            // maxVideoCount 限制：-1 = 无限制
-            if config.maxVideoCount >= 0 && (asset.isVideo || asset.isLivePhoto) {
-                let currentVideoCount = selectedAssets.filter { $0.isVideo || $0.isLivePhoto }.count
-                if currentVideoCount >= config.maxVideoCount {
-                    showAlert(message: "最多只能选择 \(config.maxVideoCount) 个视频/实况照片")
-                    return
-                }
+            case .maxVideo:
+                showAlert(message: "最多只能选择 \(config.maxVideoCount) 个视频/实况照片")
+                return
+            case .ok:
+                break
             }
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             asset.isSelected = true

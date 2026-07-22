@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
 
+    <!-- Android 14+（API 34+）：支持「仅选择的照片」部分访问 -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+
     <!-- Android 12 及以下 -->
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"

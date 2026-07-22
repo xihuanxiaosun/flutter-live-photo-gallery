@@ -169,8 +169,12 @@ class PhotoAssetModel {
     }
 
     var createDate: Date {
-        if case .photoLibrary(let asset) = sourceType { return asset.creationDate ?? Date() }
-        return Date()
+        // 必须返回「确定性」值：此前 `?? Date()` 每次访问都返回当前时间，
+        // 导致 PhotoSection 的分组键计算与排序比较用到不同的时间戳，
+        // 分组顺序与 fetch 顺序发生分歧，calculateGlobalIndex 索引错位 → 打开错图。
+        // 用固定的 .distantPast 作为缺失创建时间的哨兵，保证同一 asset 每次一致。
+        if case .photoLibrary(let asset) = sourceType { return asset.creationDate ?? .distantPast }
+        return .distantPast
     }
 
     var asset: PHAsset? {

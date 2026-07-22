@@ -6,7 +6,6 @@ enum LivePhotoError: LocalizedError {
     case notLivePhoto
     case videoResourceNotFound
     case extractionFailed(underlying: Error)
-    case invalidAsset
     case conversionFailed(underlying: Error?)
     case exportSessionCreationFailed
 
@@ -18,8 +17,6 @@ enum LivePhotoError: LocalizedError {
             return "找不到 Live Photo 的视频资源"
         case .extractionFailed(let error):
             return "提取 Live Photo 视频失败: \(error.localizedDescription)"
-        case .invalidAsset:
-            return "无效的照片资源"
         case .conversionFailed(let error):
             return "视频转码失败\(error.map { ": \($0.localizedDescription)" } ?? "")"
         case .exportSessionCreationFailed:

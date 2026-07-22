@@ -117,6 +117,11 @@ flutter pub get
 ```
 
 > **运行时权限**：调用 `requestPermission()` 会弹出系统权限申请弹窗，在 Android 10 及以下还会申请 `WRITE_EXTERNAL_STORAGE`。
+>
+> **Android 14+（API 34+）受限访问**：插件已在自身 Manifest 中声明
+> `READ_MEDIA_VISUAL_USER_SELECTED`（经 manifest merger 自动合并进宿主 App，通常无需手动添加）。
+> 当用户在系统弹窗选择「仅选择的照片」时，`requestPermission()` 返回 `"limited"`，
+> 选择器/预览仍可正常工作，只展示用户已授权的照片——与 iOS Limited 行为对齐。
 
 ---
 
