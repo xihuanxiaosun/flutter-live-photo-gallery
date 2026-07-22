@@ -103,21 +103,14 @@ class LivePhotoExtractor: LivePhotoExtracting {
                 // 无法加载轨道信息时继续导出（不设置 videoComposition）
             }
 
-            // 使用 iOS 15 兼容写法（export(to:as:) 仅 iOS 18+）
-            exportSession.outputURL = outputURL
-            exportSession.outputFileType = .mp4
             do {
-                try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-                    exportSession.exportAsynchronously {
-                        if exportSession.status == .completed {
-                            cont.resume()
-                        } else {
-                            cont.resume(throwing: exportSession.error
-                                ?? LivePhotoError.conversionFailed(
-                                    underlying: NSError(domain: "LivePhotoExtractor", code: -1)))
-                        }
-                    }
-                }
+                // 使用 iOS 15 兼容写法（export(to:as:) 仅 iOS 18+）
+                try await exportSession.exportAsync(
+                    to: outputURL,
+                    as: .mp4,
+                    fallbackError: LivePhotoError.conversionFailed(
+                        underlying: NSError(domain: "LivePhotoExtractor", code: -1))
+                )
                 try? FileManager.default.removeItem(at: inputURL)
                 completion(.success(outputURL))
             } catch {

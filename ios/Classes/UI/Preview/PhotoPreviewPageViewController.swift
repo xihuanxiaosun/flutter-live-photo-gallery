@@ -1,7 +1,6 @@
 import UIKit
 import Photos
 import AVFoundation
-import TOCropViewController
 
 // MARK: - 单张照片预览控制器
 
@@ -30,12 +29,27 @@ class SinglePhotoViewController: UIViewController {
         return iv
     }()
 
-    private var videoPlayer: AVPlayer?
-    private var videoPlayerLayer: AVPlayerLayer?
-    private var isPlaying = false
-    private var playerObserver: NSObjectProtocol?
-    private var timeObserver: Any?
-    private var statusObservation: NSKeyValueObservation?  // 类型安全 KVO，自动绑定到被观察的 item
+    /// 播放器栈（AVPlayer / AVPlayerLayer / 三类观察者）的持有者。
+    /// 懒加载：只有视频页加载素材、或长按播放 Live Photo 时才创建，
+    /// 页面释放时随之析构并拆除观察者。
+    /// ⚠️ 纯图片页必须永远不触发本属性：viewWillDisappear 每页都会调 stopVideo()，
+    /// 若转发时不先判断 hasVideoPlayerController，200 张的相册就会实例化 200 个控制器。
+    private lazy var videoPlayerController: PreviewVideoPlayerController = {
+        self.hasVideoPlayerController = true
+        return PreviewVideoPlayerController(
+            hostView: self.view,
+            scrollView: self.scrollView,
+            imageView: self.imageView,
+            playButton: self.playButton,
+            progressBar: self.progressBar,
+            loadingIndicator: self.loadingIndicator
+        )
+    }()
+
+    /// videoPlayerController 是否已实例化；读它不会触发懒加载，
+    /// 因此可以在转发前安全地判断「这一页到底有没有播放器」。
+    private var hasVideoPlayerController = false
+
     private var isLoadingVideo = false  // 防止异步加载期间重复触发
 
     /// 记录 PHImageManager 的图片请求 ID，页面消失时取消以释放内存压力
@@ -95,7 +109,7 @@ class SinglePhotoViewController: UIViewController {
         super.viewWillAppear(animated)
         // 从 UIPageViewController 滑回视频页时，重新加载播放器
         // isLoadingVideo 防止 viewDidLoad 的异步请求还未完成时再次触发
-        if asset.isVideo && videoPlayer == nil && !isLoadingVideo {
+        if asset.isVideo && !videoPlayerController.hasPlayer && !isLoadingVideo {
             loadVideo()
         }
     }
@@ -290,9 +304,9 @@ class SinglePhotoViewController: UIViewController {
         case .network(let coverUrl, let mediaType):
             guard case .video(_, let videoURL) = mediaType else { return }
             let playURL = videoURL ?? coverUrl
-            DispatchQueue.main.async { self.setupVideoPlayer(with: playURL) }
+            DispatchQueue.main.async { self.videoPlayerController.setupVideoPlayer(with: playURL) }
         case .localFile(let url, _):
-            DispatchQueue.main.async { self.setupVideoPlayer(with: url) }
+            DispatchQueue.main.async { self.videoPlayerController.setupVideoPlayer(with: url) }
         }
     }
 
@@ -317,263 +331,76 @@ class SinglePhotoViewController: UIViewController {
             DispatchQueue.main.async {
                 self.videoRequestID = nil
                 self.isLoadingVideo = false
-                self.setupVideoPlayer(with: urlAsset.url)
+                self.videoPlayerController.setupVideoPlayer(with: urlAsset.url)
             }
-        }
-    }
-
-    private func setupVideoPlayer(with url: URL) {
-        let player = AVPlayer(url: url)
-        let playerLayer = AVPlayerLayer(player: player)
-
-        playerLayer.frame = view.bounds
-        playerLayer.videoGravity = .resizeAspect
-        playerLayer.backgroundColor = UIColor.clear.cgColor
-
-        view.layer.insertSublayer(playerLayer, above: scrollView.layer)
-
-        self.videoPlayer = player
-        self.videoPlayerLayer = playerLayer
-
-        // ⚠️ 先隐藏播放按钮，等视频准备好再显示
-        playButton.isHidden = true
-        playButton.alpha = 1.0  // 重置 alpha，防止上次播放时被隐藏后残留
-        loadingIndicator.startAnimating()
-
-        // 监听视频状态（类型安全 KVO，自动绑定到此 playerItem 实例）
-        statusObservation = player.currentItem?.observe(\.status, options: [.new, .initial]) { [weak self] item, _ in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                switch item.status {
-                case .readyToPlay:
-                    self.loadingIndicator.stopAnimating()
-                    self.playButton.isHidden = false
-                    self.updatePlayButton(isPlaying: false)
-                case .failed:
-                    self.loadingIndicator.stopAnimating()
-                    self.playButton.isHidden = true
-                default:
-                    break
-                }
-            }
-        }
-
-        // 监听播放完成
-        playerObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: player.currentItem,
-            queue: .main
-        ) { [weak self] _ in
-            self?.videoPlaybackEnded()
-        }
-
-        // 监听播放进度
-        let interval = CMTime(seconds: 0.1, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
-        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            self?.updateProgress(time: time)
         }
     }
 
     @objc private func playButtonTapped() {
-        togglePlayPause()
-    }
-
-    private func togglePlayPause() {
-        guard let player = videoPlayer else { return }
-
-        if isPlaying {
-            player.pause()
-            isPlaying = false
-            updatePlayButton(isPlaying: false)
-        } else {
-            player.play()
-            isPlaying = true
-            updatePlayButton(isPlaying: true)
-            progressBar.isHidden = false
-
-            // 隐藏图片显示视频
-            UIView.animate(withDuration: 0.3) {
-                self.imageView.alpha = 0
-            }
-
-        }
-    }
-
-    private func updatePlayButton(isPlaying: Bool) {
-        let iconName = isPlaying ? "pause.fill" : "play.fill"
-        let config = UIImage.SymbolConfiguration(pointSize: 30, weight: .medium)
-        let image = UIImage(systemName: iconName, withConfiguration: config)
-        playButton.setImage(image, for: .normal)
-        playButton.tintColor = .white
-
-        // 播放时隐藏按钮
-        UIView.animate(withDuration: 0.3) {
-            self.playButton.alpha = isPlaying ? 0 : 1
-        }
-    }
-
-    private func updateProgress(time: CMTime) {
-        guard let duration = videoPlayer?.currentItem?.duration else { return }
-        let durationSeconds = CMTimeGetSeconds(duration)
-        let currentSeconds = CMTimeGetSeconds(time)
-
-        if durationSeconds > 0 {
-            progressBar.progress = Float(currentSeconds / durationSeconds)
-        }
-    }
-
-    private func videoPlaybackEnded() {
-        isPlaying = false
-        updatePlayButton(isPlaying: false)
-
-        // 重置播放位置
-        videoPlayer?.seek(to: .zero)
-
-        // 显示图片
-        UIView.animate(withDuration: 0.3) {
-            self.imageView.alpha = 1
-        }
+        videoPlayerController.togglePlayPause()
     }
 
     // MARK: - Live Photo 播放
 
-    /// Live Photo 播放代次：每次 stopVideo() 自增，用于作废进行中的异步抽帧回调，
-    /// 防止手指抬起后抽帧才完成、Live Photo 突然自行播放且无法停止。
-    private var playbackGeneration = 0
+    // 抽帧编排留在页面里；播放状态机（是否播放中、播放代次）全部封装在
+    // videoPlayerController，页面只负责把代次原样回传。
 
     func playLivePhoto() {
-        guard asset.isLivePhoto, !isPlaying else { return }
-
-        isPlaying = true
+        guard asset.isLivePhoto else { return }
+        // 已在播放中则直接忽略本次长按（去重）
+        guard let generation = videoPlayerController.beginLivePhotoPlayback() else { return }
 
         switch asset.sourceType {
-        case .photoLibrary(let phAsset):
-            playPhotoLibraryLivePhoto(phAsset)
+        case .photoLibrary:
+            playPhotoLibraryLivePhoto(generation: generation)
         case .network(_, let mediaType):
             if case .livePhoto(let videoURL) = mediaType, let videoURL = videoURL {
                 DispatchQueue.main.async {
-                    self.playVideoDirectly(url: videoURL)
+                    self.videoPlayerController.playVideoDirectly(url: videoURL, generation: generation)
                 }
             } else {
-                isPlaying = false
+                videoPlayerController.abortLivePhotoPlayback()
             }
         case .localFile(_, let mediaType):
             if case .livePhoto(let videoURL) = mediaType, let videoURL = videoURL {
                 DispatchQueue.main.async {
-                    self.playVideoDirectly(url: videoURL)
+                    self.videoPlayerController.playVideoDirectly(url: videoURL, generation: generation)
                 }
             } else {
-                isPlaying = false
+                videoPlayerController.abortLivePhotoPlayback()
             }
         }
     }
 
-    private func playPhotoLibraryLivePhoto(_ phAsset: PHAsset) {
-        guard let asset = asset.asset else {
-            isPlaying = false
+    private func playPhotoLibraryLivePhoto(generation: Int) {
+        guard let phAsset = asset.asset else {
+            videoPlayerController.abortLivePhotoPlayback()
             return
         }
 
-        // 记录本次播放代次；抬指(stopVideo)会自增代次，使下面的异步回调作废
-        let generation = playbackGeneration
-        LivePhotoExtractor.shared.extractVideo(from: asset) { [weak self] result in
+        // generation 为本次播放代次；抬指(stopVideo)会自增代次，
+        // playVideoDirectly 内部据此丢弃已经过期的抽帧结果
+        LivePhotoExtractor.shared.extractVideo(from: phAsset) { [weak self] result in
             guard let self = self else { return }
 
             switch result {
             case .success(let url):
                 DispatchQueue.main.async {
-                    // 手指已抬起（stopVideo 已自增代次）则丢弃本次抽帧结果，不再播放
-                    guard self.playbackGeneration == generation else { return }
-                    self.playVideoDirectly(url: url)
+                    self.videoPlayerController.playVideoDirectly(url: url, generation: generation)
                 }
             case .failure:
                 DispatchQueue.main.async {
-                    self.isPlaying = false
+                    self.videoPlayerController.abortLivePhotoPlayback()
                 }
             }
         }
     }
-    
-    private func playVideoDirectly(url: URL) {
-        let player = AVPlayer(url: url)
-        let playerLayer = AVPlayerLayer(player: player)
-        
-        playerLayer.frame = view.bounds
-        playerLayer.videoGravity = .resizeAspect
-        playerLayer.backgroundColor = UIColor.clear.cgColor
-        
-        view.layer.insertSublayer(playerLayer, above: scrollView.layer)
-        
-        self.videoPlayer = player
-        self.videoPlayerLayer = playerLayer
-        
-        // 等待一小段时间后播放
-        DispatchQueue.main.asyncAfter(deadline: .now() + UIConstants.Animation.videoPlayDelay) { [weak self] in
-            guard let self = self else { return }
 
-            UIView.animate(withDuration: UIConstants.Animation.fadeInOutDuration) {
-                self.imageView.alpha = 0
-            }
-            
-            self.videoPlayer?.play()
-        }
-        
-        // 监听播放完成
-        playerObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: player.currentItem,
-            queue: .main
-        ) { [weak self] _ in
-            self?.stopVideo()
-        }
-    }
-
+    /// 停止播放并复原封面图；预览页翻页 / 抬指时由外部调用。
+    /// 从未播放过的页面（纯图片页）不会因此实例化播放器控制器。
     func stopVideo() {
-        // 自增播放代次，作废任何仍在进行中的 Live Photo 抽帧回调（见 playPhotoLibraryLivePhoto）
-        playbackGeneration &+= 1
-
-        // statusObservation 设为 nil 即自动从对应的 AVPlayerItem 移除观察者
-        // 无论 playerItem 是否已替换，都不会崩溃
-        statusObservation = nil
-
-        // 移除通知观察者
-        if let observer = playerObserver {
-            NotificationCenter.default.removeObserver(observer)
-            playerObserver = nil
-        }
-
-        if let observer = timeObserver {
-            videoPlayer?.removeTimeObserver(observer)
-            timeObserver = nil
-        }
-
-        // 重置播放按钮状态（包含 alpha，防止播放时隐藏后残留）
-        playButton.alpha = 1.0
-        progressBar.isHidden = true
-
-        UIView.animate(withDuration: UIConstants.Animation.fadeInOutDuration, animations: {
-            self.imageView.alpha = 1.0
-        }) { [weak self] _ in
-            self?.videoPlayer?.pause()
-            self?.videoPlayerLayer?.removeFromSuperlayer()
-            self?.videoPlayer = nil
-            self?.videoPlayerLayer = nil
-            self?.isPlaying = false
-            self?.playButton.isHidden = true
-        }
-    }
-
-    deinit {
-        // statusObservation 是 NSKeyValueObservation，ARC 释放时自动 invalidate，无需手动移除
-        // 但显式置 nil 更清晰，防止极端情况下延迟释放
-        statusObservation = nil
-
-        if let observer = playerObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        if let observer = timeObserver {
-            videoPlayer?.removeTimeObserver(observer)
-        }
+        guard hasVideoPlayerController else { return }
+        videoPlayerController.stopVideo()
     }
 }
 
@@ -612,18 +439,26 @@ extension SinglePhotoViewController: UIScrollViewDelegate {
 
 // MARK: - 主预览控制器
 
-class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDelegate {
-    
+class PhotoPreviewPageViewController: UIViewController {
+
     private let allAssets: [PhotoAssetModel]
     private var selectedAssets: [PhotoAssetModel]
     private let config: PickerConfig
     private let completion: ([PhotoAssetModel], Bool) -> Void
 
-    /// The UITransitionView UIKit created for the crop-VC presentation.
-    /// UIKit fails to remove this container when the crop VC is dismissed from
-    /// within a custom-presentation parent (shouldRemovePresentersView = false).
-    /// We capture it on presentation and remove it manually after crop dismisses.
-    /// Accessible from PhotoPreviewPresentationController for race-condition cleanup.
+    /// UIKit 为裁剪页（TOCropViewController）创建的 UITransitionView。
+    /// 自定义转场下（`shouldRemovePresentersView = false`）UIKit 不会在裁剪页消失时
+    /// 移除这个容器，必须由我们手动清理，否则窗口里残留一个空的 UITransitionView，
+    /// 吞掉之后所有的触摸事件。
+    ///
+    /// ⚠️ 这是「裁剪协调器」与「转场控制器」之间的共享状态，共有三个写入方：
+    /// - `PreviewCropCoordinator.presentCropViewController`：弹出裁剪页后记录容器；
+    /// - `PreviewCropCoordinator.cleanupOrphanedWindowContainers`：裁剪页正常关闭后清理并置空；
+    /// - `PhotoPreviewPresentationController.dismissalTransitionWillBegin`：
+    ///   「裁剪页还在关闭途中，预览页就被关掉」的竞态下抢先清理并置空。
+    ///
+    /// 因此它只能存放在预览页上——两个协作者都能拿到预览页，却拿不到彼此；
+    /// 一旦下沉进协调器，上述竞态就会漏掉清理，留下吞噬触摸的孤儿容器。
     var cropPresentationContainer: UIView?
 
     /// 保存网络图片完成后的回调（nil = 不显示下载按钮）
@@ -638,8 +473,23 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
     /// 保存图片时使用的相册名称，空串 = 仅存到「最近项目」，非空 = 同时加入同名相册
     private let saveAlbumName: String
 
-    /// 下载任务进度观察者（KVO）
-    private var downloadProgressObservation: NSKeyValueObservation?
+    /// 网络图片「下载 + 写入相册」的执行者（持有下载任务的进度观察者）
+    private let saveService = NetworkImageSaveService()
+
+    /// 分享流程的执行者（懒加载：首次点分享时才连同锚点按钮一起创建）
+    private lazy var shareController = PreviewShareController(
+        host: self,
+        sourceView: shareButton,
+        assetProvider: { [weak self] () -> PhotoAssetModel? in
+            guard let self = self,
+                  !self.allAssets.isEmpty,
+                  self.currentIndex < self.allAssets.count else { return nil }
+            return self.allAssets[self.currentIndex]
+        }
+    )
+
+    /// 裁剪流程的编排者兼 TOCropViewController 代理（代理为 weak，必须在此强持有）
+    private lazy var cropCoordinator = PreviewCropCoordinator(host: self)
 
     private var currentIndex: Int
     private var sourceFrame: CGRect
@@ -1093,95 +943,6 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
         }
     }
 
-    /// Restores the preview VC's view to its own UITransitionView and removes the
-    /// orphaned crop-presentation container.
-    ///
-    /// When a `.overFullScreen` VC (crop) is presented from a custom-presentation VC
-    /// (preview, using `shouldRemovePresentersView = false`), UIKit moves the preview
-    /// VC's view INTO the crop's UITransitionView to maintain the visual stack.
-    /// On crop dismiss, UIKit removes the crop container (taking the preview view with
-    /// it), leaving the preview's own UITransitionView empty in the window — which then
-    /// blocks all touch input.
-    ///
-    /// Fix: move the preview view back into its own container, then remove the now-empty
-    /// crop container.
-    private func cleanupOrphanedWindowContainers() {
-        guard let cropContainer = cropPresentationContainer else { return }
-
-        // If our view ended up inside the crop container (UIKit moved it there),
-        // restore it to our own UITransitionView before removing the crop container.
-        if let myContainer = presentationController?.containerView,
-           view.superview === cropContainer {
-            view.frame = myContainer.bounds
-            myContainer.addSubview(view)   // reparents: crop container → preview container
-        }
-
-        cropContainer.removeFromSuperview()
-        cropPresentationContainer = nil
-    }
-
-    private func dismissCropViewController(
-        _ cropViewController: TOCropViewController,
-        completion: (() -> Void)? = nil
-    ) {
-        cropViewController.dismiss(animated: true) { [weak self] in
-            self?.cleanupOrphanedWindowContainers()
-            completion?()
-        }
-    }
-
-    private func clearTemporaryEditedFile(for asset: PhotoAssetModel) {
-        guard let old = asset.editedPath, !old.isEmpty else { return }
-        try? FileManager.default.removeItem(atPath: old)
-        asset.editedPath = nil
-    }
-
-    private func writeTemporaryEditedImage(_ image: UIImage, for asset: PhotoAssetModel) throws {
-        let fileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("lpg_crop_\(UUID().uuidString).jpg")
-        guard let data = image.opaque().jpegData(compressionQuality: 0.92) else {
-            throw PhotoLibraryError.exportFailed(
-                underlying: NSError(
-                    domain: "PhotoPreviewPageViewController",
-                    code: -1,
-                    userInfo: [NSLocalizedDescriptionKey: "无法生成裁剪结果"]
-                )
-            )
-        }
-
-        try data.write(to: fileURL, options: .atomic)
-        clearTemporaryEditedFile(for: asset)
-        asset.editedPath = fileURL.path
-        asset.needsThumbnailRefresh = true
-    }
-
-    private func persistCroppedImage(
-        _ image: UIImage,
-        for asset: PhotoAssetModel,
-        completion: @escaping (Result<Void, Error>) -> Void
-    ) {
-        switch asset.sourceType {
-        case .photoLibrary(let phAsset):
-            PhotoLibraryManager.shared.persistEditedImage(image, for: phAsset) { [weak self] result in
-                switch result {
-                case .success:
-                    self?.clearTemporaryEditedFile(for: asset)
-                    asset.needsThumbnailRefresh = true
-                    completion(.success(()))
-                case .failure(let error):
-                    completion(.failure(error))
-                }
-            }
-        case .network, .localFile:
-            do {
-                try writeTemporaryEditedImage(image, for: asset)
-                completion(.success(()))
-            } catch {
-                completion(.failure(error))
-            }
-        }
-    }
-
     /// 保存当前网络图片/视频到系统相册
     @objc private func downloadTapped() {
         guard let callback = downloadCallback else { return }
@@ -1206,120 +967,36 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
         let progressCallback = downloadProgressCallback
         let urlString = url.absoluteString
 
-        // 使用 downloadTask 以支持进度回调（dataTask 不提供字节级进度）
-        let downloadSession = URLSession(configuration: .default)
-        let task = downloadSession.downloadTask(with: url) { [weak self] tmpURL, response, error in
-            guard let self = self else { return }
-
-            // 停止进度观察
-            self.downloadProgressObservation = nil
-
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-            guard let tmpURL, error == nil, (200..<300).contains(statusCode) else {
-                DispatchQueue.main.async {
-                    self.downloadButton.isEnabled = true
-                    callback([
-                        "status":       "failed",
-                        "url":          urlString,
-                        "errorCode":    "NETWORK_ERROR",
-                        "errorMessage": error?.localizedDescription
-                            ?? "网络请求失败（HTTP \(statusCode)）",
-                    ])
-                }
-                return
-            }
-
-            // 2. 拷贝到应用临时目录（下载 task 的 tmpURL 在回调完成后会被删除）
-            let ext = url.pathExtension.isEmpty ? "jpg" : url.pathExtension
-            let tmp = FileManager.default.temporaryDirectory
-                .appendingPathComponent("lpg_dl_\(UUID().uuidString).\(ext)")
-            do { try FileManager.default.copyItem(at: tmpURL, to: tmp) } catch {
-                DispatchQueue.main.async {
-                    self.downloadButton.isEnabled = true
-                    callback([
-                        "status":       "failed",
-                        "url":          urlString,
-                        "errorCode":    "SAVE_FAILED",
-                        "errorMessage": "临时文件写入失败",
-                    ])
-                }
-                return
-            }
-
-            // 3. PHPhotoLibrary 保存（需要宿主 App Info.plist 中的 NSPhotoLibraryAddUsageDescription）
-            // #3 fix: 根据 mediaType 选择正确的 PHAssetChangeRequest API
-            // 若 saveAlbumName 非空，同时将图片加入指定相册（不存在则自动创建）
-            var localId: String?
-            let targetAlbumName = self.saveAlbumName
-            let urlStringForCallback = urlString
-            PHPhotoLibrary.shared().performChanges({
-                // ── 创建资产 ──────────────────────────────────────────
-                guard let changeRequest = PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: tmp) else { return }
-                localId = changeRequest.placeholderForCreatedAsset?.localIdentifier
-
-                // ── 加入命名相册（saveAlbumName 非空时）────────────────
-                guard !targetAlbumName.isEmpty,
-                      let placeholder = changeRequest.placeholderForCreatedAsset else { return }
-
-                // 查找已有同名相册
-                let fetchResult = PHAssetCollection.fetchAssetCollections(
-                    with: .album, subtype: .albumRegular, options: nil)
-                var existingAlbum: PHAssetCollection?
-                fetchResult.enumerateObjects { collection, _, stop in
-                    if collection.localizedTitle == targetAlbumName {
-                        existingAlbum = collection
-                        stop.pointee = true
-                    }
-                }
-
-                if let album = existingAlbum {
-                    // 已有相册 → 追加
-                    PHAssetCollectionChangeRequest(for: album)?.addAssets([placeholder] as NSArray)
-                } else {
-                    // 新建相册并加入
-                    let albumReq = PHAssetCollectionChangeRequest
-                        .creationRequestForAssetCollection(withTitle: targetAlbumName)
-                    albumReq.addAssets([placeholder] as NSArray)
-                }
-            }) { success, saveError in
-                try? FileManager.default.removeItem(at: tmp)
-                DispatchQueue.main.async {
-                    self.downloadButton.isEnabled = true
-                    if success {
-                        callback([
-                            "status":  "success",
-                            "url":     urlStringForCallback,
-                            "assetId": localId ?? "",
-                        ])
-                        self.showSaveToast("已保存到相册")
-                    } else {
-                        let desc = saveError?.localizedDescription ?? ""
-                        let code = desc.lowercased().contains("access") || desc.lowercased().contains("permission")
-                            ? "PERMISSION_DENIED" : "SAVE_FAILED"
-                        callback([
-                            "status":       "failed",
-                            "url":          urlStringForCallback,
-                            "errorCode":    code,
-                            "errorMessage": desc.isEmpty ? "保存失败" : desc,
-                        ])
-                    }
-                }
-            }
-        }
-
-        // 进度监听（KVO observing task.progress.fractionCompleted）
-        downloadProgressObservation = task.progress.observe(
-            \Progress.fractionCompleted,
-            options: [.new]
-        ) { progress, _ in
-            DispatchQueue.main.async {
+        saveService.save(
+            url: url,
+            albumName: saveAlbumName,
+            progress: { fractionCompleted in
                 progressCallback?([
                     "url":      urlString,
-                    "progress": progress.fractionCompleted,
+                    "progress": fractionCompleted,
                 ])
+            },
+            completion: { [weak self] result in
+                guard let self = self else { return }
+                self.downloadButton.isEnabled = true
+                switch result {
+                case .success(let assetId):
+                    callback([
+                        "status":  "success",
+                        "url":     urlString,
+                        "assetId": assetId,
+                    ])
+                    self.showSaveToast("已保存到相册")
+                case .failure(let errorCode, let errorMessage):
+                    callback([
+                        "status":       "failed",
+                        "url":          urlString,
+                        "errorCode":    errorCode,
+                        "errorMessage": errorMessage,
+                    ])
+                }
             }
-        }
-        task.resume()
+        )
     }
 
     /// 临时 Toast（iOS 无原生 Toast，用 UILabel 淡出模拟）
@@ -1371,113 +1048,7 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
     }
 
     @objc private func previewCropTapped() {
-        guard config.showRadio,
-              currentIndex >= 0,
-              currentIndex < allAssets.count else { return }
-        let asset = allAssets[currentIndex]
-        guard case .image = asset.mediaType else { return }
-
-        loadCroppableImage(for: asset) { [weak self] image in
-            guard let self, let image else {
-                self?.showAlert(message: "当前资源无法裁剪")
-                return
-            }
-
-            let cropVC = TOCropViewController(image: image)
-            cropVC.delegate = self
-            cropVC.aspectRatioLockEnabled = false
-            cropVC.resetAspectRatioEnabled = true
-            cropVC.rotateButtonsHidden = true
-            // Use .overFullScreen to avoid disturbing the underlying .custom presentation's
-            // containerView hierarchy, which would break the dismiss transition.
-            cropVC.modalPresentationStyle = .overFullScreen
-            self.present(cropVC, animated: true) { [weak self, weak cropVC] in
-                // Capture crop's UITransitionView after presentation completes.
-                // UIKit adds cropVC.view to a new UITransitionView (the container).
-                // We need this reference to remove it manually after crop dismisses,
-                // because UIKit's default cleanup is broken in our custom-presentation context.
-                self?.cropPresentationContainer = cropVC?.view.superview
-            }
-        }
-    }
-
-    private func loadCroppableImage(for asset: PhotoAssetModel, completion: @escaping (UIImage?) -> Void) {
-        let finishOnMain: (UIImage?) -> Void = { image in
-            DispatchQueue.main.async {
-                completion(image)
-            }
-        }
-
-        switch asset.sourceType {
-        case .photoLibrary(let phAsset):
-            let options = PHImageRequestOptions()
-            options.deliveryMode = .highQualityFormat
-            options.isNetworkAccessAllowed = true
-            options.isSynchronous = false
-            options.resizeMode = .none
-            options.version = .current
-            PHImageManager.default().requestImageDataAndOrientation(
-                for: phAsset,
-                options: options
-            ) { data, _, _, _ in
-                finishOnMain(data.flatMap { UIImage(data: $0) })
-            }
-        case .network(let url, _):
-            if let editedPath = asset.editedPath,
-               !editedPath.isEmpty,
-               FileManager.default.fileExists(atPath: editedPath) {
-                finishOnMain(UIImage(contentsOfFile: editedPath))
-                return
-            }
-            asset.editedPath = nil
-            PhotoLibraryManager.shared.loadNetworkImage(from: url) { result in
-                finishOnMain(try? result.get())
-            }
-        case .localFile(let url, _):
-            if let editedPath = asset.editedPath,
-               !editedPath.isEmpty,
-               FileManager.default.fileExists(atPath: editedPath) {
-                finishOnMain(UIImage(contentsOfFile: editedPath))
-                return
-            }
-            asset.editedPath = nil
-            finishOnMain(UIImage(contentsOfFile: url.path))
-        }
-    }
-
-    func cropViewController(
-        _ cropViewController: TOCropViewController,
-        didCropTo image: UIImage,
-        with cropRect: CGRect,
-        angle: Int
-    ) {
-        _ = cropRect
-        _ = angle
-        guard currentIndex >= 0, currentIndex < allAssets.count else {
-            dismissCropViewController(cropViewController)
-            return
-        }
-
-        let asset = allAssets[currentIndex]
-        persistCroppedImage(image, for: asset) { [weak self] result in
-            guard let self else { return }
-            switch result {
-            case .success:
-                self.currentPhotoVC?.applyEditedImage(image, animated: false)
-                self.dismissCropViewController(cropViewController) {
-                    self.showSaveToast("裁剪完成")
-                }
-            case .failure(let error):
-                self.dismissCropViewController(cropViewController) { [weak self] in
-                    self?.showAlert(message: error.localizedDescription)
-                }
-            }
-        }
-    }
-
-    func cropViewController(_ cropViewController: TOCropViewController, didFinishCancelled cancelled: Bool) {
-        _ = cancelled
-        dismissCropViewController(cropViewController)
+        cropCoordinator.startCropping()
     }
 
     @objc private func handleBarToggleTap(_ gesture: UITapGestureRecognizer) {
@@ -1533,63 +1104,9 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
     }
 
     @objc private func shareTapped() {
-        guard !allAssets.isEmpty, currentIndex < allAssets.count else { return }
-        let asset = allAssets[currentIndex]
-
-        switch asset.sourceType {
-        case .network(let url, _):
-            presentShare(items: [url])
-        case .localFile(let url, _):
-            presentShare(items: [url])
-        case .photoLibrary(let phAsset):
-            // PHAsset 不符合 UIActivityItemSource，直接分享会导致接收方拿不到任何内容。
-            // 先异步取出可分享的 UIImage / 视频文件 URL，再弹分享面板。
-            shareLibraryAsset(phAsset)
-        }
+        shareController.shareCurrentAsset()
     }
 
-    /// 从相册资源取出可分享内容后再弹分享面板（图片→UIImage，视频→文件 URL）
-    private func shareLibraryAsset(_ phAsset: PHAsset) {
-        if phAsset.mediaType == .video {
-            let options = PHVideoRequestOptions()
-            options.isNetworkAccessAllowed = true
-            options.deliveryMode = .highQualityFormat
-            PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { [weak self] avAsset, _, _ in
-                let url = (avAsset as? AVURLAsset)?.url
-                DispatchQueue.main.async {
-                    guard let self = self, let url = url else { return }
-                    self.presentShare(items: [url])
-                }
-            }
-        } else {
-            let options = PHImageRequestOptions()
-            options.isNetworkAccessAllowed = true
-            options.deliveryMode = .highQualityFormat
-            PHImageManager.default().requestImage(
-                for: phAsset,
-                targetSize: PHImageManagerMaximumSize,
-                contentMode: .aspectFit,
-                options: options
-            ) { [weak self] image, info in
-                // 忽略 opportunistic 先返回的降质图，只用最终高清图，避免弹两次分享面板
-                if (info?[PHImageResultIsDegradedKey] as? Bool) ?? false { return }
-                DispatchQueue.main.async {
-                    guard let self = self, let image = image else { return }
-                    self.presentShare(items: [image])
-                }
-            }
-        }
-    }
-
-    private func presentShare(items: [Any]) {
-        let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
-        if let popover = activityVC.popoverPresentationController {
-            popover.sourceView = shareButton
-            popover.sourceRect = shareButton.bounds
-        }
-        present(activityVC, animated: true)
-    }
-    
     @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
         guard let currentPhotoVC = currentPhotoVC else { return }
         
@@ -1673,7 +1190,35 @@ class PhotoPreviewPageViewController: UIViewController, TOCropViewControllerDele
         alert.addAction(UIAlertAction(title: "好的", style: .default))
         present(alert, animated: true)
     }
-    
+
+}
+
+// MARK: - PreviewCropHost
+
+/// 裁剪协调器所需的宿主能力：只暴露当前资源与三个反馈入口，
+/// allAssets / currentIndex / config 等内部状态继续保持 private。
+extension PhotoPreviewPageViewController: PreviewCropHost {
+
+    var isCropActionEnabled: Bool {
+        config.showRadio
+    }
+
+    var currentCropTargetAsset: PhotoAssetModel? {
+        guard currentIndex >= 0, currentIndex < allAssets.count else { return nil }
+        return allAssets[currentIndex]
+    }
+
+    func applyCroppedImage(_ image: UIImage) {
+        currentPhotoVC?.applyEditedImage(image, animated: false)
+    }
+
+    func showCropToast(_ text: String) {
+        showSaveToast(text)
+    }
+
+    func showCropFailureAlert(message: String) {
+        showAlert(message: message)
+    }
 }
 
 // MARK: - UIPageViewControllerDelegate & DataSource
