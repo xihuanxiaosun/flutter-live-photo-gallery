@@ -23,7 +23,7 @@ data class MediaAsset(
 // 选择器配置
 // ──────────────────────────────────────────────
 
-/** 从 Flutter 传入的 MethodChannel args 构建选择器配置 */
+/** 从 Flutter 传入的参数（经 Pigeon 契约转换的 args map）构建选择器配置 */
 data class PickerConfig(
     val maxCount: Int,
     val enableVideo: Boolean,
@@ -77,7 +77,7 @@ data class PickerConfig(
         }
 
         /**
-         * 从 MethodChannel args map 构建配置，带安全默认值
+         * 从 args map 构建配置，带安全默认值
          * 用于 LivePhotoGalleryPlugin.pickAssets / previewAssets
          */
         fun from(args: Map<String, Any>): PickerConfig = PickerConfig(

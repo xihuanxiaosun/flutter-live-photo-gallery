@@ -412,9 +412,8 @@ class PreviewActivity : AppCompatActivity() {
                     isVideoOrLive = isVideoOrLive,
                 )) {
                     SelectionLimits.Result.MAX_COUNT -> {
-                        LivePhotoGalleryPlugin.getChannel(engineKey)?.invokeMethod(
-                            "onMaxCountReached", mapOf("maxCount" to maxCount)
-                        )
+                        LivePhotoGalleryPlugin.getFlutterApi(engineKey)
+                            ?.onMaxCountReached(maxCount.toLong()) {}
                         Toast.makeText(this, "最多只能选择 $maxCount 张", Toast.LENGTH_SHORT).show()
                         return@setOnClickListener
                     }
@@ -607,7 +606,7 @@ class PreviewActivity : AppCompatActivity() {
 
     /**
      * 下载当前网络图片并保存到系统相册。
-     * 完成后通过 LivePhotoGalleryPlugin.activeChannel invokeMethod 回调 Flutter 侧。
+     * 完成后通过 LivePhotoGalleryPlugin.getFlutterApi(engineKey) 回调 Flutter 侧。
      * 同时在 native 层显示 Toast 作为即时反馈（Flutter 在 Activity 覆盖期间无法渲染 UI）。
      */
     private fun downloadCurrentAsset() {
@@ -624,10 +623,8 @@ class PreviewActivity : AppCompatActivity() {
                 mediaDownloader.download(url, saveAlbumName) { fraction ->
                     // onProgress 在 IO 线程回调，切回主线程再走 channel
                     mainHandler.post {
-                        LivePhotoGalleryPlugin.getChannel(engineKey)?.invokeMethod(
-                            "onDownloadProgress",
-                            mapOf("url" to url, "progress" to fraction)
-                        )
+                        LivePhotoGalleryPlugin.getFlutterApi(engineKey)
+                            ?.onDownloadProgress(url, fraction) {}
                     }
                 }
             }
@@ -637,10 +634,9 @@ class PreviewActivity : AppCompatActivity() {
             result.fold(
                 onSuccess = { uri ->
                     if (uri != null) {
-                        LivePhotoGalleryPlugin.getChannel(engineKey)?.invokeMethod(
-                            "onDownloadResult",
-                            mapOf("status" to "success", "url" to url, "assetId" to uri)
-                        )
+                        LivePhotoGalleryPlugin.getFlutterApi(engineKey)?.onDownloadResult(
+                            PgDownloadResultEvent(url = url, success = true, assetId = uri)
+                        ) {}
                         Toast.makeText(this@PreviewActivity, "已保存到相册", Toast.LENGTH_SHORT).show()
                     } else {
                         invokeDownloadFailure(url, "SAVE_FAILED", "保存到相册失败")
@@ -654,15 +650,14 @@ class PreviewActivity : AppCompatActivity() {
     }
 
     private fun invokeDownloadFailure(url: String, errorCode: String, message: String) {
-        LivePhotoGalleryPlugin.getChannel(engineKey)?.invokeMethod(
-            "onDownloadResult",
-            mapOf(
-                "status"       to "failed",
-                "url"          to url,
-                "errorCode"    to errorCode,
-                "errorMessage" to message,
+        LivePhotoGalleryPlugin.getFlutterApi(engineKey)?.onDownloadResult(
+            PgDownloadResultEvent(
+                url          = url,
+                success      = false,
+                errorCode    = pgDownloadErrorCodeOf(errorCode),
+                errorMessage = message,
             )
-        )
+        ) {}
         Toast.makeText(this@PreviewActivity, "保存失败", Toast.LENGTH_SHORT).show()
     }
 

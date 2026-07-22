@@ -12,6 +12,9 @@
 .swiftpm/
 migrate_working_dir/
 
+# Claude Code 本地工作区（含临时 worktree 副本，绝不入库）
+.claude/
+
 # IntelliJ related
 *.iml
 *.ipr

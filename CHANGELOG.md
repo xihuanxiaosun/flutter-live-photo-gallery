@@ -1,3 +1,54 @@
+## Unreleased
+
+迁移到 Pigeon 生成跨端契约。**公开 Dart API（类型与方法签名）完全不变**，
+`pickAssets` / `previewAssets` / `getThumbnail` / `exportAsset` /
+`cleanupTempFiles` / `onDownloadResult` / `onDownloadProgress` /
+`onMaxCountReached` 的用法与 1.0.0 一致，调用方无需改动代码。
+
+### 变更
+
+**跨端契约改由 Pigeon 生成**
+- 新增 `pigeons/messages.dart` 作为 Dart / Kotlin / Swift 三端的单一真源，
+  生成 `lib/src/messages.g.dart`、`android/.../Messages.g.kt`、`ios/Classes/Messages.g.swift`
+- 原先手工对齐的 MethodChannel 方法名、arg key、字符串枚举全部由生成代码收口；
+  此前「三端任意一处笔误 → 静默退化」的一整类问题变成编译期错误
+- 生成类型统一 `Pg` 前缀，仅在门面层边界互转，不外泄到公开 API
+- 退役 MethodChannel 通道名 `com.newtrip.yingYbirds/live_photo`
+
+**SDK 下限抬高（不兼容变更）**
+- `environment.sdk` 由 `>=3.0.0` 抬到 `>=3.4.0`，`flutter` 由 `>=3.3.0` 抬到 `>=3.22.0`
+- 原因：dev_dependencies 引入的 `pigeon ^22.7.0` 要求 Dart `^3.4.0`。
+  继续声明 3.0.0 的话，任何在下限环境执行 `flutter pub get` 的人都会直接遇到版本求解失败
+- 低于该下限的工程需先升级 Flutter 再接入本插件
+
+**越界入参的归一化行为（仅对不符合文档约定的输入可观察）**
+
+以下三处是本次迁移刻意统一的行为。传入符合文档约定的参数时行为与 1.0.0 完全一致，
+只有传入契约外的值时才会看到差异：
+
+- `AssetInput.type`：除 `"network"` 外的任意值（含拼写错误、空串）一律按 `"local"` 处理。
+  此前 iOS 侧会静默丢弃这类条目，导致预览列表条目数与传入数量不一致
+- `AssetInput.mediaType`：不在 `{image, video, livePhoto}` 内的值一律归一为 `"image"`
+  （原 iOS `PluginBridge.parseMediaType` 的 default 分支行为，现三端统一）
+- Android 返回结果中缺失的 `mediaType`：现在为 `"image"`，此前为空串 `""`
+
+**修复：`exportAsset` 恢复非法 `format` 的报错契约**
+- `format` 不在 `{image, video, livePhotoVideo}` 内时，抛出
+  `LivePhotoException(code: 'INVALID_ARGS', message: '不支持的媒体类型')`，且不再发起 native 调用
+- 迁移中途这里曾把任意非法值归一为 `image`，导致拼错 format 会静默导出静态图；
+  现恢复 1.0.0 中 iOS 侧 `PhotoLibraryError.invalidMediaType` 的原有行为
+
+### 测试
+
+- 新增 `test/pigeon_boundary_test.dart`：在真实 pigeon channel 上挂 mock native，
+  逐值钉死门面 ↔ 生成类型的手写转换器（`MediaFilter` / `PickerConfig` / `AssetInput` /
+  `MediaItem` / `DownloadErrorCode` / `exportAsset` 的 format）
+- 新增 `android/src/test/.../PigeonBoundaryTest.kt`：逐值钉死 Kotlin 侧
+  `.wire` 映射、`pgMediaTypeOf` / `pgDownloadErrorCodeOf` 的兜底、
+  以及 `PgPickerConfig.toPickerConfig()` 的字段还原与归一化
+- `test/contract_test.dart` 的定位收窄为「公开门面形状」——迁移后其覆盖的
+  `toMap` / `fromMap` 已不再跨越 channel，wire 契约看上面两个新文件
+
 ## 1.0.0
 
 首个正式版本，iOS & Android 双平台完整支持。

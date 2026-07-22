@@ -1,12 +1,18 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_photo_gallery/live_photo_gallery.dart';
 
-/// 跨平台契约 golden 测试。
+/// **公开门面** golden 测试。
 ///
-/// 插件的 iOS(Swift) / Android(Kotlin) 两端与 Dart 之间没有共享 schema，
-/// 全靠 MethodChannel 的「方法名 + arg key + 字符串枚举 + 返回 map 形状」手工对齐。
-/// 这些测试把 Dart 侧的序列化形状钉死，作为后续重构（拆分/去重原生代码）时的护栏：
-/// 一旦有人改动 toMap / fromMap 的 key 或枚举字符串，这里立即失败，提醒同步两端。
+/// 注意：Pigeon 迁移后，这里覆盖的 `toMap()` / `fromMap()` / `fromString()`
+/// **已不再跨越 channel**——跨端数据由 pigeons/messages.dart 生成的类型承载。
+/// 本文件的职责因此收窄为：把插件对调用方暴露的公开形状（map key、枚举字符串、
+/// 防御式默认值）钉死，因为它们仍属于 1.0 的公开 API，调用方可能直接使用。
+///
+/// 真正跨端的手写转换器（MediaFilter._pg / PickerConfig._pg / AssetInput._pg /
+/// MediaItem._fromPg / DownloadErrorCode._fromPg）由以下两处覆盖，改动 wire
+/// 映射时看那里：
+///   - Dart 侧：test/pigeon_boundary_test.dart
+///   - Android 侧：android/src/test/kotlin/.../PigeonBoundaryTest.kt
 void main() {
   group('PickerConfig.toMap 契约形状', () {
     test('默认配置产出完整且稳定的 key 集合', () {

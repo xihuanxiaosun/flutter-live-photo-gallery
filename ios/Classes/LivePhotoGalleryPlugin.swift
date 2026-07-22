@@ -2,142 +2,224 @@ import Flutter
 import UIKit
 import Photos
 
-/// Flutter 插件入口 — MethodChannel 桥接
-/// Channel: com.newtrip.yingYbirds/live_photo
-public class LivePhotoGalleryPlugin: NSObject, FlutterPlugin {
+/// Flutter 插件入口 — Pigeon 桥接
+///
+/// 跨端契约由 pigeons/messages.dart 生成（Messages.g.swift）：本类实现生成的
+/// `LivePhotoGalleryHostApi` 协议，native → Flutter 的三个事件走生成的
+/// `LivePhotoGalleryFlutterApi`。
+///
+/// 生成类型（`Pg*`）只出现在本文件的边界处：`LivePhotoGalleryCore` 及其下游
+/// 仍然消费原有的 `[String: Any]` 形状，业务代码不受契约迁移影响。
+public class LivePhotoGalleryPlugin: NSObject, FlutterPlugin, LivePhotoGalleryHostApi {
 
     // MARK: - Registration
 
-    /// 存储 channel 引用，供 previewAssets 的 downloadCallback 闭包捕获，
-    /// 以便在保存图片完成后 invokeMethod 回调 Flutter 侧（native → Flutter 主动推送）
-    private var channel: FlutterMethodChannel?
+    /// Native → Flutter 事件通道，供 previewAssets 的 download / maxCount 回调闭包捕获
+    private var flutterApi: LivePhotoGalleryFlutterApi?
 
     public static func register(with registrar: FlutterPluginRegistrar) {
-        let channel = FlutterMethodChannel(
-            name: "com.newtrip.yingYbirds/live_photo",
-            binaryMessenger: registrar.messenger()
-        )
         let instance = LivePhotoGalleryPlugin()
-        instance.channel = channel
-        registrar.addMethodCallDelegate(instance, channel: channel)
+        instance.flutterApi = LivePhotoGalleryFlutterApi(binaryMessenger: registrar.messenger())
+        LivePhotoGalleryHostApiSetup.setUp(binaryMessenger: registrar.messenger(), api: instance)
+        // setUp 的 handler 闭包已强引用 instance；publish 让 registrar 也持有一份，
+        // 与迁移前 addMethodCallDelegate 的生命周期语义保持一致。
+        registrar.publish(instance)
     }
 
-    // MARK: - MethodCall Handler
+    // MARK: - LivePhotoGalleryHostApi
 
-    public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-        let args = call.arguments as? [String: Any] ?? [:]
-
-        switch call.method {
-
-        // ─── pickAssets ──────────────────────────────────────────────────────
-        // args: PickerConfig 字段 (isDarkMode, maxCount, enableVideo, ...)
-        // returns: { items: [[String:Any]], isOriginalPhoto: Bool }
-        case "pickAssets":
-            guard let rootVC = topViewController() else {
-                result(FlutterError(code: "NO_VIEW_CONTROLLER",
-                                    message: "无法获取顶层 ViewController",
-                                    details: nil))
-                return
-            }
-            let weakChannel = channel
-            LivePhotoGalleryCore.shared.pickAssets(
-                args: args,
-                from: rootVC,
-                maxCountReachedCallback: { maxCount in
-                    DispatchQueue.main.async {
-                        weakChannel?.invokeMethod("onMaxCountReached", arguments: ["maxCount": maxCount])
+    /// returns: authorized | limited | denied | notDetermined
+    func requestPermission(completion: @escaping (Result<PgPermissionStatus, Error>) -> Void) {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        switch status {
+        case .authorized:
+            completion(.success(.authorized))
+        case .limited:
+            completion(.success(.limited))
+        case .denied, .restricted:
+            completion(.success(.denied))
+        case .notDetermined:
+            PHPhotoLibrary.requestAuthorization(for: .readWrite) { newStatus in
+                DispatchQueue.main.async {
+                    switch newStatus {
+                    case .authorized: completion(.success(.authorized))
+                    case .limited:    completion(.success(.limited))
+                    default:          completion(.success(.denied))
                     }
                 }
-            ) { [weak self] outcome in
-                self?.flutterResult(outcome, result: result)
             }
-
-        // ─── previewAssets ───────────────────────────────────────────────────
-        // args: assets, initialIndex, sourceFrame, selectedAssetIds, showDownloadButton + PickerConfig 字段
-        // returns: { items: [[String:Any]], isOriginalPhoto: Bool }
-        case "previewAssets":
-            guard let rootVC = topViewController() else {
-                result(FlutterError(code: "NO_VIEW_CONTROLLER",
-                                    message: "无法获取顶层 ViewController",
-                                    details: nil))
-                return
-            }
-            let showDownload = args["showDownloadButton"] as? Bool ?? false
-            // 弱引用捕获 channel，避免循环引用；在 invokeMethod 前 guard 非 nil
-            let weakChannel = channel
-            let downloadCallback: (([String: Any]) -> Void)? = showDownload ? { payload in
-                DispatchQueue.main.async {
-                    weakChannel?.invokeMethod("onDownloadResult", arguments: payload)
-                }
-            } : nil
-            let downloadProgressCallback: (([String: Any]) -> Void)? = showDownload ? { payload in
-                DispatchQueue.main.async {
-                    weakChannel?.invokeMethod("onDownloadProgress", arguments: payload)
-                }
-            } : nil
-            LivePhotoGalleryCore.shared.previewAssets(
-                args: args,
-                from: rootVC,
-                downloadCallback: downloadCallback,
-                downloadProgressCallback: downloadProgressCallback,
-                maxCountReachedCallback: { maxCount in
-                    DispatchQueue.main.async {
-                        weakChannel?.invokeMethod("onMaxCountReached", arguments: ["maxCount": maxCount])
-                    }
-                }
-            ) { [weak self] outcome in
-                self?.flutterResult(outcome, result: result)
-            }
-
-        // ─── getThumbnail ────────────────────────────────────────────────────
-        // args: assetId, width, height
-        // returns: { thumbnailPath: String }
-        case "getThumbnail":
-            LivePhotoGalleryCore.shared.getThumbnail(args: args) { [weak self] outcome in
-                self?.flutterResult(outcome, result: result)
-            }
-
-        // ─── exportAsset ─────────────────────────────────────────────────────
-        // args: assetId, format ("image" | "video" | "livePhotoVideo")
-        // returns: { filePath: String }
-        case "exportAsset":
-            LivePhotoGalleryCore.shared.exportAsset(args: args) { [weak self] outcome in
-                self?.flutterResult(outcome, result: result)
-            }
-
-        // ─── requestPermission ───────────────────────────────────────────────
-        // returns: "authorized" | "limited" | "denied" | "notDetermined"
-        case "requestPermission":
-            requestPhotoPermission(result: result)
-
-        // ─── cleanupTempFiles ────────────────────────────────────────────────
-        // 清理插件产生的临时缓存文件，建议上传完成后或 App 启动时调用
-        case "cleanupTempFiles":
-            ExportManager.shared.cleanupTempFiles()
-            result(nil)
-
-        default:
-            result(FlutterMethodNotImplemented)
+        @unknown default:
+            completion(.success(.denied))
         }
+    }
+
+    func pickAssets(
+        config: PgPickerConfig,
+        completion: @escaping (Result<PgPickResult?, Error>) -> Void
+    ) {
+        guard let rootVC = topViewController() else {
+            completion(.failure(PigeonError(code: "NO_VIEW_CONTROLLER",
+                                            message: "无法获取顶层 ViewController",
+                                            details: nil)))
+            return
+        }
+        let api = flutterApi
+        LivePhotoGalleryCore.shared.pickAssets(
+            args: Self.args(from: config),
+            from: rootVC,
+            maxCountReachedCallback: { maxCount in
+                DispatchQueue.main.async {
+                    api?.onMaxCountReached(maxCount: Int64(maxCount)) { _ in }
+                }
+            }
+        ) { outcome in
+            Self.finishPickResult(outcome, completion: completion)
+        }
+    }
+
+    func previewAssets(
+        request: PgPreviewRequest,
+        completion: @escaping (Result<PgPickResult?, Error>) -> Void
+    ) {
+        guard let rootVC = topViewController() else {
+            completion(.failure(PigeonError(code: "NO_VIEW_CONTROLLER",
+                                            message: "无法获取顶层 ViewController",
+                                            details: nil)))
+            return
+        }
+        let showDownload = request.showDownloadButton
+        let api = flutterApi
+        // 预览页仍以 [String: Any] 形式回传下载事件（保持 UI 层不变），在此翻译成契约类型
+        let downloadCallback: (([String: Any]) -> Void)? = showDownload ? { payload in
+            let event = Self.downloadEvent(from: payload)
+            DispatchQueue.main.async {
+                api?.onDownloadResult(event: event) { _ in }
+            }
+        } : nil
+        let downloadProgressCallback: (([String: Any]) -> Void)? = showDownload ? { payload in
+            let url = payload["url"] as? String ?? ""
+            let progress = payload["progress"] as? Double ?? 0
+            DispatchQueue.main.async {
+                api?.onDownloadProgress(url: url, progress: progress) { _ in }
+            }
+        } : nil
+        LivePhotoGalleryCore.shared.previewAssets(
+            args: Self.args(from: request),
+            from: rootVC,
+            downloadCallback: downloadCallback,
+            downloadProgressCallback: downloadProgressCallback,
+            maxCountReachedCallback: { maxCount in
+                DispatchQueue.main.async {
+                    api?.onMaxCountReached(maxCount: Int64(maxCount)) { _ in }
+                }
+            }
+        ) { outcome in
+            Self.finishPickResult(outcome, completion: completion)
+        }
+    }
+
+    func getThumbnail(
+        assetId: String,
+        width: Double,
+        height: Double,
+        completion: @escaping (Result<String?, Error>) -> Void
+    ) {
+        LivePhotoGalleryCore.shared.getThumbnail(
+            args: ["assetId": assetId, "width": width, "height": height]
+        ) { outcome in
+            Self.finishPath(outcome, key: "thumbnailPath", completion: completion)
+        }
+    }
+
+    func exportAsset(
+        assetId: String,
+        format: PgExportFormat,
+        completion: @escaping (Result<String?, Error>) -> Void
+    ) {
+        LivePhotoGalleryCore.shared.exportAsset(
+            args: ["assetId": assetId, "format": format.wire]
+        ) { outcome in
+            Self.finishPath(outcome, key: "filePath", completion: completion)
+        }
+    }
+
+    func cleanupTempFiles(completion: @escaping (Result<Void, Error>) -> Void) {
+        ExportManager.shared.cleanupTempFiles()
+        DispatchQueue.main.async { completion(.success(())) }
     }
 
     // MARK: - Private: Result Bridge
 
-    /// Swift Result<Any?,Error> → FlutterResult
-    /// 不同错误类型映射到不同 code，Flutter 侧可精确捕获
-    private func flutterResult(_ outcome: Result<Any?, Error>, result: @escaping FlutterResult) {
+    /// `Result<Any?, Error>`（业务层形状）→ Pigeon 的 `PgPickResult?`
+    /// 所有回调统一切回主线程，与迁移前 flutterResult 的行为一致。
+    private static func finishPickResult(
+        _ outcome: Result<Any?, Error>,
+        completion: @escaping (Result<PgPickResult?, Error>) -> Void
+    ) {
         DispatchQueue.main.async {
             switch outcome {
             case .success(let value):
-                result(value)
+                completion(.success(pickResult(from: value)))
             case .failure(let error):
-                let (code, message) = Self.flutterErrorInfo(from: error)
-                result(FlutterError(code: code, message: message, details: nil))
+                completion(.failure(pigeonError(from: error)))
             }
         }
     }
 
-    /// 将 Swift 错误映射为结构化的 (code, message) 供 FlutterError 使用
+    /// `Result<Any?, Error>` → 单个路径字符串（getThumbnail / exportAsset）
+    private static func finishPath(
+        _ outcome: Result<Any?, Error>,
+        key: String,
+        completion: @escaping (Result<String?, Error>) -> Void
+    ) {
+        DispatchQueue.main.async {
+            switch outcome {
+            case .success(let value):
+                completion(.success((value as? [String: Any])?[key] as? String))
+            case .failure(let error):
+                completion(.failure(pigeonError(from: error)))
+            }
+        }
+    }
+
+    private static func pickResult(from value: Any?) -> PgPickResult? {
+        guard let dict = value as? [String: Any] else { return nil }
+        let rawItems = dict["items"] as? [[String: Any]] ?? []
+        let items: [PgMediaItem] = rawItems.map { item in
+            PgMediaItem(
+                assetId: item["assetId"] as? String ?? "",
+                mediaType: mediaType(from: item["mediaType"] as? String),
+                thumbnailPath: item["thumbnailPath"] as? String ?? "",
+                duration: item["duration"] as? Double,
+                width: Int64(item["width"] as? Int ?? 0),
+                height: Int64(item["height"] as? Int ?? 0)
+            )
+        }
+        return PgPickResult(items: items, isOriginalPhoto: dict["isOriginalPhoto"] as? Bool ?? false)
+    }
+
+    /// 预览页的下载事件字典 → 契约类型
+    private static func downloadEvent(from payload: [String: Any]) -> PgDownloadResultEvent {
+        let url = payload["url"] as? String ?? ""
+        if (payload["status"] as? String) == "success" {
+            return PgDownloadResultEvent(url: url, success: true,
+                                         assetId: payload["assetId"] as? String)
+        }
+        return PgDownloadResultEvent(
+            url: url,
+            success: false,
+            errorCode: downloadErrorCode(from: payload["errorCode"] as? String),
+            errorMessage: payload["errorMessage"] as? String
+        )
+    }
+
+    /// Swift 错误 → 结构化 PigeonError（code 与迁移前的 FlutterError code 逐字一致）
+    private static func pigeonError(from error: Error) -> PigeonError {
+        let (code, message) = flutterErrorInfo(from: error)
+        return PigeonError(code: code, message: message, details: nil)
+    }
+
+    /// 将 Swift 错误映射为结构化的 (code, message)
     private static func flutterErrorInfo(from error: Error) -> (String, String) {
         if let e = error as? PhotoLibraryError {
             switch e {
@@ -154,6 +236,69 @@ public class LivePhotoGalleryPlugin: NSObject, FlutterPlugin {
             return ("LIVE_PHOTO_ERROR", e.localizedDescription)
         }
         return ("UNKNOWN_ERROR", error.localizedDescription)
+    }
+
+    // MARK: - Private: 契约类型 → 业务层 args
+
+    private static func args(from config: PgPickerConfig) -> [String: Any] {
+        var dict: [String: Any] = [
+            "isDarkMode":       config.isDarkMode,
+            "maxCount":         Int(config.maxCount),
+            "enableVideo":      config.enableVideo,
+            "enableLivePhoto":  config.enableLivePhoto,
+            "showRadio":        config.showRadio,
+            "maxVideoCount":    Int(config.maxVideoCount),
+            "videoMaxDuration": config.videoMaxDuration,
+            "filterConfig":     config.filterConfig.wire,
+        ]
+        if let crop = config.cropConfig {
+            dict["cropConfig"] = [
+                "aspectRatioX": crop.aspectRatioX,
+                "aspectRatioY": crop.aspectRatioY,
+            ]
+        }
+        return dict
+    }
+
+    private static func args(from request: PgPreviewRequest) -> [String: Any] {
+        var dict = args(from: request.config)
+        dict["assets"] = request.assets.map { asset -> [String: Any] in
+            var a: [String: Any] = ["type": asset.type.wire]
+            if let assetId  = asset.assetId  { a["assetId"]  = assetId }
+            if let url      = asset.url      { a["url"]      = url }
+            if let type     = asset.mediaType { a["mediaType"] = type.wire }
+            if let videoUrl = asset.videoUrl { a["videoUrl"] = videoUrl }
+            if let duration = asset.duration { a["duration"] = duration }
+            return a
+        }
+        dict["initialIndex"] = Int(request.initialIndex)
+        dict["sourceFrame"] = [
+            "x":      request.sourceFrame.x,
+            "y":      request.sourceFrame.y,
+            "width":  request.sourceFrame.width,
+            "height": request.sourceFrame.height,
+        ]
+        dict["selectedAssetIds"]   = request.selectedAssetIds
+        dict["showDownloadButton"] = request.showDownloadButton
+        dict["saveAlbumName"]      = request.saveAlbumName
+        return dict
+    }
+
+    private static func mediaType(from raw: String?) -> PgMediaType {
+        switch raw {
+        case "video":     return .video
+        case "livePhoto": return .livePhoto
+        default:          return .image
+        }
+    }
+
+    private static func downloadErrorCode(from raw: String?) -> PgDownloadErrorCode {
+        switch raw {
+        case "PERMISSION_DENIED": return .permissionDenied
+        case "NETWORK_ERROR":     return .networkError
+        case "SAVE_FAILED":       return .saveFailed
+        default:                  return .unknown
+        }
     }
 
     // MARK: - Private: ViewController Helpers
@@ -175,30 +320,46 @@ public class LivePhotoGalleryPlugin: NSObject, FlutterPlugin {
         if let presented = vc?.presentedViewController { return topVC(from: presented) }
         return vc
     }
+}
 
-    // MARK: - Private: Permission
+// MARK: - 契约枚举 → 既有业务层消费的字符串
 
-    private func requestPhotoPermission(result: @escaping FlutterResult) {
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        switch status {
-        case .authorized:
-            result("authorized")
-        case .limited:
-            result("limited")
-        case .denied, .restricted:
-            result("denied")
-        case .notDetermined:
-            PHPhotoLibrary.requestAuthorization(for: .readWrite) { newStatus in
-                DispatchQueue.main.async {
-                    switch newStatus {
-                    case .authorized: result("authorized")
-                    case .limited:    result("limited")
-                    default:          result("denied")
-                    }
-                }
-            }
-        @unknown default:
-            result("denied")
+extension PgMediaFilter {
+    var wire: String {
+        switch self {
+        case .all:           return "all"
+        case .imageOnly:     return "imageOnly"
+        case .videoOnly:     return "videoOnly"
+        case .livePhotoOnly: return "livePhotoOnly"
+        }
+    }
+}
+
+extension PgMediaType {
+    var wire: String {
+        switch self {
+        case .image:     return "image"
+        case .video:     return "video"
+        case .livePhoto: return "livePhoto"
+        }
+    }
+}
+
+extension PgAssetSource {
+    var wire: String {
+        switch self {
+        case .local:   return "local"
+        case .network: return "network"
+        }
+    }
+}
+
+extension PgExportFormat {
+    var wire: String {
+        switch self {
+        case .image:          return "image"
+        case .video:          return "video"
+        case .livePhotoVideo: return "livePhotoVideo"
         }
     }
 }

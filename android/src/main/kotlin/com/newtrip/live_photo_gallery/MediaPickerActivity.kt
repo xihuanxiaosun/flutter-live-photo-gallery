@@ -402,10 +402,8 @@ class MediaPickerActivity : AppCompatActivity() {
             )) {
                 SelectionLimits.Result.MAX_COUNT -> {
                     // 通知 Flutter 侧 onMaxCountReached
-                    LivePhotoGalleryPlugin.getChannel(engineKey)?.invokeMethod(
-                        "onMaxCountReached",
-                        mapOf("maxCount" to config.maxCount)
-                    )
+                    LivePhotoGalleryPlugin.getFlutterApi(engineKey)
+                        ?.onMaxCountReached(config.maxCount.toLong()) {}
                     Toast.makeText(this, "最多只能选择 ${config.maxCount} 张", Toast.LENGTH_SHORT).show()
                     return
                 }

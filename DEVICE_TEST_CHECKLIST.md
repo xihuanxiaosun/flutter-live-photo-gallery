@@ -6,6 +6,40 @@
 >
 > 图例：`[ ]` 待验证 · 分支 `refactor/cleanup-and-bugfixes`
 
+## ⚠️ 先看这条：往 `ios/Classes/` 加过文件后必须 `pod install`
+
+podspec 用的是通配符 `Classes/**/*.swift`，但**这个通配符是在 `pod install` 时展开并写死进 Pods 工程的**。
+新增 Swift 文件不会改变 podspec 校验和，所以 Flutter **不会**自动重装 pod，构建就会报
+`Cannot find 'XXX' in scope`（看起来像重构失败，其实只是 Pods 工程是旧的）。
+
+```bash
+export LANG=en_US.UTF-8      # CocoaPods 需要 UTF-8 locale，否则 pod 会崩
+cd example/ios && pod install
+```
+
+> 本轮我已经执行过 `pod install` 并跑通了真实构建（`✓ Built Runner.app`），
+> 所以你现在直接 `flutter build ios` 就能成功。这条是给**以后**再加文件时看的。
+
+---
+
+## P. Pigeon 迁移后的全流程回归（本轮最需要覆盖）
+
+消息层已从手写 MethodChannel 换成 Pigeon 生成的类型安全接口。**公共 Dart 用法一个字没变**，
+但底层三端管道整个换掉了，所以每条通路都要真机走一遍：
+
+- [ ] **`requestPermission()`** 返回 `authorized` / `limited` / `denied` / `notDetermined` 四种值正确
+- [ ] **`pickAssets()`** 正常打开、选择、完成 → 返回 items 与 isOriginalPhoto 正确
+- [ ] **`pickAssets()` 用户取消** → 返回 `null`（不是异常、不是空列表）
+- [ ] **`previewAssets()`** 本地+网络混合预览正常；关闭/完成都能拿到结果
+- [ ] **`previewAssets()` 取消** → 返回 `null`
+- [ ] **`getThumbnail()`** 返回可用路径
+- [ ] **`exportAsset()`** 三种 format（image / video / livePhotoVideo）都能导出
+- [ ] **`exportAsset()` 传错误 format** → 抛 `LivePhotoException(code: 'INVALID_ARGS')`
+- [ ] **`cleanupTempFiles()`** 不报错
+- [ ] **三个事件流**：`onDownloadResult`（成功+失败）、`onDownloadProgress`（进度递增）、`onMaxCountReached`（超出上限时触发）——都能在 Flutter 侧收到
+- [ ] **错误码**：权限拒绝时 `LivePhotoException.code == 'PERMISSION_DENIED'`；其余结构化错误码照旧
+- [ ] **Android 权限流**：首次调用自动弹权限框，授予后自动继续打开选择器
+
 ## 如何运行
 
 - **iOS**：`cd example && flutter run`（真机或模拟器；Live Photo 需真机相册里有 Live Photo）

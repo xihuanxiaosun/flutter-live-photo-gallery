@@ -1,6 +1,12 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
 
+import 'src/messages.g.dart';
+
+// 本文件是插件的**公开门面**：以下所有类型 / 方法签名对调用方保持稳定。
+// 跨端消息的真实契约在 pigeons/messages.dart（生成 lib/src/messages.g.dart），
+// 生成类型（Pg* 前缀）一律不外泄，只在本文件的边界处互转。
+
 // ──────────────────────────────────────────────────────────────────────────────
 // 异常类型
 // ──────────────────────────────────────────────────────────────────────────────
@@ -48,6 +54,14 @@ enum MediaFilter {
         MediaFilter.videoOnly => 'videoOnly',
         MediaFilter.livePhotoOnly => 'livePhotoOnly',
       };
+
+  /// 转为跨端传输枚举（pigeon 生成）
+  PgMediaFilter get _pg => switch (this) {
+        MediaFilter.all => PgMediaFilter.all,
+        MediaFilter.imageOnly => PgMediaFilter.imageOnly,
+        MediaFilter.videoOnly => PgMediaFilter.videoOnly,
+        MediaFilter.livePhotoOnly => PgMediaFilter.livePhotoOnly,
+      };
 }
 
 /// 裁剪配置。
@@ -69,6 +83,9 @@ class CropConfig {
         'aspectRatioX': aspectRatioX,
         'aspectRatioY': aspectRatioY,
       };
+
+  PgCropConfig get _pg =>
+      PgCropConfig(aspectRatioX: aspectRatioX, aspectRatioY: aspectRatioY);
 }
 
 /// 下载错误码，对齐 Android / iOS 两端的 errorCode 字符串
@@ -83,6 +100,15 @@ enum DownloadErrorCode {
         'NETWORK_ERROR' => DownloadErrorCode.networkError,
         'SAVE_FAILED' => DownloadErrorCode.saveFailed,
         _ => DownloadErrorCode.unknown,
+      };
+
+  /// 由 pigeon 传输枚举还原（native 侧已负责把未知码归一到 [PgDownloadErrorCode.unknown]）
+  static DownloadErrorCode _fromPg(PgDownloadErrorCode? code) => switch (code) {
+        PgDownloadErrorCode.permissionDenied => DownloadErrorCode.permissionDenied,
+        PgDownloadErrorCode.networkError => DownloadErrorCode.networkError,
+        PgDownloadErrorCode.saveFailed => DownloadErrorCode.saveFailed,
+        PgDownloadErrorCode.unknown => DownloadErrorCode.unknown,
+        null => DownloadErrorCode.unknown,
       };
 }
 
@@ -150,7 +176,35 @@ class AssetInput {
         if (videoUrl != null) 'videoUrl': videoUrl,
         if (duration != null) 'duration': duration,
       };
+
+  /// 转为跨端传输对象。
+  /// [type] 只有 `"network"` 被识别为网络资源，其余（含非法值）按本地处理——
+  /// 与 Android 侧此前 `type == "network"` 的判定保持一致。
+  PgAssetInput get _pg => PgAssetInput(
+        type: type == 'network' ? PgAssetSource.network : PgAssetSource.local,
+        assetId: assetId,
+        url: url,
+        mediaType: _pgMediaTypeOrNull(mediaType),
+        videoUrl: videoUrl,
+        duration: duration,
+      );
 }
+
+/// `"image" | "video" | "livePhoto"` → 传输枚举；null 保持 null，
+/// 未知字符串归一到 [PgMediaType.image]（对齐 iOS PluginBridge.parseMediaType 的 default）
+PgMediaType? _pgMediaTypeOrNull(String? raw) => switch (raw) {
+      null => null,
+      'video' => PgMediaType.video,
+      'livePhoto' => PgMediaType.livePhoto,
+      _ => PgMediaType.image,
+    };
+
+/// 传输枚举 → 公开 API 的字符串
+String _mediaTypeString(PgMediaType type) => switch (type) {
+      PgMediaType.image => 'image',
+      PgMediaType.video => 'video',
+      PgMediaType.livePhoto => 'livePhoto',
+    };
 
 /// 插件返回的单个媒体条目
 class MediaItem {
@@ -183,6 +237,16 @@ class MediaItem {
         duration: (map['duration'] as num?)?.toDouble(),
         width: (map['width'] as num?)?.toInt() ?? 0,
         height: (map['height'] as num?)?.toInt() ?? 0,
+      );
+
+  /// 由跨端传输对象构建（内部使用）
+  factory MediaItem._fromPg(PgMediaItem item) => MediaItem(
+        assetId: item.assetId,
+        mediaType: _mediaTypeString(item.mediaType),
+        thumbnailPath: item.thumbnailPath,
+        duration: item.duration,
+        width: item.width,
+        height: item.height,
       );
 }
 
@@ -253,6 +317,18 @@ class PickerConfig {
         'filterConfig': filterConfig._value,
         if (cropConfig != null) 'cropConfig': cropConfig!.toMap(),
       };
+
+  PgPickerConfig get _pg => PgPickerConfig(
+        isDarkMode: isDarkMode,
+        maxCount: maxCount,
+        enableVideo: enableVideo,
+        enableLivePhoto: enableLivePhoto,
+        showRadio: showRadio,
+        maxVideoCount: maxVideoCount,
+        videoMaxDuration: videoMaxDuration,
+        filterConfig: filterConfig._pg,
+        cropConfig: cropConfig?._pg,
+      );
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -270,7 +346,8 @@ class PickerConfig {
 /// }
 /// ```
 class LivePhotoGallery {
-  static const _channel = MethodChannel('com.newtrip.yingYbirds/live_photo');
+  /// pigeon 生成的 Flutter → Native 接口（内部实现细节，不外泄）
+  static final LivePhotoGalleryHostApi _host = LivePhotoGalleryHostApi();
 
   // ────────────────────────────────────────────────
   // 下载结果事件流（native → Flutter 主动推送）
@@ -325,47 +402,12 @@ class LivePhotoGallery {
   /// 监听用户尝试超出最大选择数量时的事件（参数为 maxCount）
   static Stream<int> get onMaxCountReached => _maxCountCtrl.stream;
 
-  /// 注册 native → Dart 的方法调用处理器（幂等，只注册一次）
+  /// 注册 native → Dart 的事件接收器（幂等，只注册一次）
   static bool _handlerRegistered = false;
   static void _ensureHandlerRegistered() {
     if (_handlerRegistered) return;
     _handlerRegistered = true;
-    _channel.setMethodCallHandler(_handleNativeCall);
-  }
-
-  static Future<dynamic> _handleNativeCall(MethodCall call) async {
-    switch (call.method) {
-      case 'onDownloadResult':
-        final args = Map<String, dynamic>.from(call.arguments as Map);
-        final status = args['status'] as String?;
-        final url    = args['url']    as String? ?? '';
-        if (status == 'success') {
-          _downloadCtrl.add(DownloadSuccess(
-            url:     url,
-            assetId: args['assetId'] as String?,
-          ));
-        } else {
-          _downloadCtrl.add(DownloadFailure(
-            url:          url,
-            errorCode:    DownloadErrorCode.fromString(args['errorCode'] as String?),
-            errorMessage: args['errorMessage'] as String? ?? '保存失败',
-          ));
-        }
-        return null;
-      case 'onDownloadProgress':
-        final args     = Map<String, dynamic>.from(call.arguments as Map);
-        final url      = args['url']      as String? ?? '';
-        final progress = (args['progress'] as num?)?.toDouble() ?? 0.0;
-        _downloadProgressCtrl.add((url: url, progress: progress));
-        return null;
-      case 'onMaxCountReached':
-        final args     = Map<String, dynamic>.from(call.arguments as Map);
-        final maxCount = args['maxCount'] as int? ?? 0;
-        _maxCountCtrl.add(maxCount);
-        return null;
-      default:
-        return null;
-    }
+    LivePhotoGalleryFlutterApi.setUp(const _FlutterApiReceiver());
   }
 
   // ────────────────────────────────────────────────
@@ -374,8 +416,12 @@ class LivePhotoGallery {
   // ────────────────────────────────────────────────
   static Future<String> requestPermission() async {
     try {
-      return await _channel.invokeMethod<String>('requestPermission') ??
-          'denied';
+      return switch (await _host.requestPermission()) {
+        PgPermissionStatus.authorized => 'authorized',
+        PgPermissionStatus.limited => 'limited',
+        PgPermissionStatus.denied => 'denied',
+        PgPermissionStatus.notDetermined => 'notDetermined',
+      };
     } on PlatformException catch (e) {
       throw LivePhotoException(code: e.code, message: e.message ?? '');
     }
@@ -391,11 +437,7 @@ class LivePhotoGallery {
     // 注册 handler 以接收 onMaxCountReached 回调
     _ensureHandlerRegistered();
     try {
-      final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>(
-        'pickAssets',
-        config.toMap(),
-      );
-      return _parsePickResult(raw);
+      return _toPickResult(await _host.pickAssets(config._pg));
     } on PlatformException catch (e) {
       throw LivePhotoException(code: e.code, message: e.message ?? '');
     }
@@ -429,25 +471,21 @@ class LivePhotoGallery {
     // 「未开启下载按钮的纯预览」场景静默丢掉 onMaxCountReached 事件。
     _ensureHandlerRegistered();
     try {
-      final args = <String, dynamic>{
-        'assets': assets.map((a) => a.toMap()).toList(),
-        'initialIndex': initialIndex,
-        'sourceFrame': {
-          'x': sourceFrame.left,
-          'y': sourceFrame.top,
-          'width': sourceFrame.width,
-          'height': sourceFrame.height,
-        },
-        'selectedAssetIds':    selectedAssetIds,
-        'showDownloadButton':  showDownloadButton,
-        if (saveAlbumName.isNotEmpty) 'saveAlbumName': saveAlbumName,
-        ...config.toMap(),
-      };
-      final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>(
-        'previewAssets',
-        args,
+      final request = PgPreviewRequest(
+        assets: assets.map((a) => a._pg).toList(),
+        initialIndex: initialIndex,
+        sourceFrame: PgRect(
+          x: sourceFrame.left,
+          y: sourceFrame.top,
+          width: sourceFrame.width,
+          height: sourceFrame.height,
+        ),
+        selectedAssetIds: List<String>.of(selectedAssetIds),
+        config: config._pg,
+        showDownloadButton: showDownloadButton,
+        saveAlbumName: saveAlbumName,
       );
-      return _parsePickResult(raw);
+      return _toPickResult(await _host.previewAssets(request));
     } on PlatformException catch (e) {
       throw LivePhotoException(code: e.code, message: e.message ?? '');
     }
@@ -462,11 +500,7 @@ class LivePhotoGallery {
     double height = 200,
   }) async {
     try {
-      final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>(
-        'getThumbnail',
-        {'assetId': assetId, 'width': width, 'height': height},
-      );
-      return raw?['thumbnailPath'] as String?;
+      return await _host.getThumbnail(assetId, width, height);
     } on PlatformException catch (e) {
       throw LivePhotoException(code: e.code, message: e.message ?? '');
     }
@@ -476,17 +510,18 @@ class LivePhotoGallery {
   // 导出资源原文件到本地临时目录
   // [format]: "image" | "video" | "livePhotoVideo"
   // 返回本地文件路径
+  //
+  // [format] 不在上述三者之内时抛出 LivePhotoException(code: 'INVALID_ARGS')，
+  // 与迁移前 iOS 侧 PhotoLibraryError.invalidMediaType 的行为一致——
+  // 拼错的 format 必须报错，而不是静默退化成导出静态图。
   // ────────────────────────────────────────────────
   static Future<String?> exportAsset({
     required String assetId,
     required String format,
   }) async {
+    final pgFormat = _parseExportFormat(format);
     try {
-      final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>(
-        'exportAsset',
-        {'assetId': assetId, 'format': format},
-      );
-      return raw?['filePath'] as String?;
+      return await _host.exportAsset(assetId, pgFormat);
     } on PlatformException catch (e) {
       throw LivePhotoException(code: e.code, message: e.message ?? '');
     }
@@ -498,24 +533,70 @@ class LivePhotoGallery {
   // ────────────────────────────────────────────────
   static Future<void> cleanupTempFiles() async {
     try {
-      await _channel.invokeMethod<void>('cleanupTempFiles');
+      await _host.cleanupTempFiles();
     } on PlatformException catch (e) {
       throw LivePhotoException(code: e.code, message: e.message ?? '');
     }
   }
 
   // ────────────────────────────────────────────────
-  // 私有解析
+  // 私有解析：pigeon 传输对象 → 公开模型
   // ────────────────────────────────────────────────
-  static PickResult? _parsePickResult(Map<dynamic, dynamic>? raw) {
+
+  /// `"image" | "video" | "livePhotoVideo"` → 传输枚举；其余值一律拒绝。
+  static PgExportFormat _parseExportFormat(String format) => switch (format) {
+        'image' => PgExportFormat.image,
+        'video' => PgExportFormat.video,
+        'livePhotoVideo' => PgExportFormat.livePhotoVideo,
+        _ => throw const LivePhotoException(
+            code: 'INVALID_ARGS',
+            message: '不支持的媒体类型',
+          ),
+      };
+
+  static PickResult? _toPickResult(PgPickResult? raw) {
     if (raw == null) return null;
-    final rawItems = raw['items'] as List<dynamic>? ?? [];
     return PickResult(
-      items: rawItems
-          .whereType<Map<dynamic, dynamic>>()
-          .map(MediaItem.fromMap)
-          .toList(),
-      isOriginalPhoto: raw['isOriginalPhoto'] as bool? ?? false,
+      items: raw.items.map(MediaItem._fromPg).toList(),
+      isOriginalPhoto: raw.isOriginalPhoto,
     );
   }
+
+  // ────────────────────────────────────────────────
+  // native → Dart 事件入口（供 _FlutterApiReceiver 回灌 StreamController）
+  // ────────────────────────────────────────────────
+  static void _emitDownloadResult(PgDownloadResultEvent event) {
+    if (event.success) {
+      _downloadCtrl.add(DownloadSuccess(url: event.url, assetId: event.assetId));
+    } else {
+      _downloadCtrl.add(DownloadFailure(
+        url: event.url,
+        errorCode: DownloadErrorCode._fromPg(event.errorCode),
+        errorMessage: event.errorMessage ?? '保存失败',
+      ));
+    }
+  }
+
+  static void _emitDownloadProgress(String url, double progress) =>
+      _downloadProgressCtrl.add((url: url, progress: progress));
+
+  static void _emitMaxCountReached(int maxCount) =>
+      _maxCountCtrl.add(maxCount);
+}
+
+/// pigeon 生成的 Native → Dart 接口实现；只负责把事件转发到公开的三个 Stream。
+class _FlutterApiReceiver implements LivePhotoGalleryFlutterApi {
+  const _FlutterApiReceiver();
+
+  @override
+  void onDownloadResult(PgDownloadResultEvent event) =>
+      LivePhotoGallery._emitDownloadResult(event);
+
+  @override
+  void onDownloadProgress(String url, double progress) =>
+      LivePhotoGallery._emitDownloadProgress(url, progress);
+
+  @override
+  void onMaxCountReached(int maxCount) =>
+      LivePhotoGallery._emitMaxCountReached(maxCount);
 }

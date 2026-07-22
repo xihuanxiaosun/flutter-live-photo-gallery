@@ -3,9 +3,11 @@ description: "iOS & Android media picker & preview plugin. Supports images, vide
 version: 1.0.0
 homepage:
 
+# pigeon 22.7.x 要求 Dart ^3.4.0，故本包的 SDK 下限同步抬到 3.4.0 / Flutter 3.22.0。
+# 若仍声明 3.0.0，任何在下限环境执行 `flutter pub get` 的人都会直接遇到版本求解失败。
 environment:
-  sdk: '>=3.0.0 <4.0.0'
-  flutter: '>=3.3.0'
+  sdk: '>=3.4.0 <4.0.0'
+  flutter: '>=3.22.0'
 
 dependencies:
   flutter:
@@ -15,6 +17,8 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  # 跨端契约代码生成（Dart / Kotlin / Swift 单一真源，见 pigeons/messages.dart）
+  pigeon: ^22.7.0
 
 flutter:
   plugin:
