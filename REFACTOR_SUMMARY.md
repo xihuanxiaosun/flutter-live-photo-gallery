@@ -71,6 +71,15 @@ cd example && flutter build ios --no-codesign
 - 合并了**两套 AVPlayer 引擎**和**两处 AVAssetExportSession 异步桥**
 - **又修了一个真 bug**：长按 Live Photo 后 ~100ms 内松手，延迟播放块缺代次守卫会把图层透明度置 0 却没有播放器 → **页面变空白**
 
+### 提交 4 · `925a233` — iOS Live Photo 播放改用 `PHLivePhotoView`
+
+本地相册 Live Photo 的长按播放,以前是"抽出视频轨用 AVPlayer 播" —— 手搓系统本来就有的东西。
+现在换成苹果原生 `PHLivePhotoView`,**播放观感和相册 App 一致**(原生渐入、LIVE 角标、交叉淡入)。
+
+- **只改本地相册这条路**;网络实况(静图+MOV)没有真正的 PHLivePhoto,保持 AVPlayer 不动
+- 关键的**代次令牌**(防松手后自播/白屏那个修复)原样保留
+- **这是行为改变** —— 播放观感变了(变得更原生),必须真机长按几张相册 Live Photo 确认
+
 ### 提交 3 · `8524c45` — Pigeon 契约迁移
 
 **问题**：跨端契约以前只存在于"散文 + 三种语言里各写一遍的字符串字面量"，审查已发现真实漂移（错误码不一致、SHA-256 id 规范两端手抄）。
