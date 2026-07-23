@@ -99,6 +99,7 @@ cd example/ios && pod install
 > `PHCachingImageManager` 注入所有服务）；`PhotoPreviewPageViewController` 1840→1334 行
 > （拆出 4 个协作者）。合并了两套 AVPlayer 引擎与两处 AVAssetExportSession 异步桥。
 
+- [ ] **Live Photo 播放已换原生 `PHLivePhotoView`（本次行为改变，务必验）**：长按相册里的实况照片，播放观感应和「相册」App 一致（原生渐入 + LIVE 角标 + 松手交叉淡回静图），并留意音频是否符合预期；网络实况仍走原 AVPlayer，不受影响。
 - [ ] **Live Photo 长按播放（重点，修了一个真 bug）**：长按实况照片播放正常；**快速长按后立刻松手，反复十几次** —— 页面不得变**空白**，也不得松手后自己播放。（本轮修复：延迟播放块此前缺代次守卫，会在松手后把图层 alpha 置 0 却没有播放器，导致白屏。网络/本地文件来源的实况也一并加了守卫。）
 - [ ] **视频播放**：点播放、暂停/继续、进度条、播放结束回到封面；左右翻页切视频（旧页停、新页可播）；退出预览释放播放器（无残留声音）。
 - [ ] **裁剪流程**：预览页编辑→裁剪→完成，图片回写且缩略图刷新;取消裁剪回到预览。**边界**：裁剪页正在关闭时立刻下滑关闭预览 —— 不得出现"界面还在但点不动"（透明遮罩残留）。
@@ -127,4 +128,5 @@ cd example/ios && pod install
 - **Tier-C ChromeFader / 转场拆分（Android）**：仅编译验证、R1/R2/R4/R12 时序敏感。可做，但每步需真机确认飞入/飞回/下拉关闭动画无回归。收益是 PreviewActivity 再减 ~100 行。
 - **M3 Pigeon 契约迁移**（你最看重的跨端根治）：需**一次性协调三端** + 真机回归。不可增量半迁移(Dart 切了 native 没切会运行时断,而 CI 只能测编译)。建议：新分支专做、pigeon 生成后 Dart+Android+iOS 一起改、真机全流程回归后再合。
 - **M4 iOS 拆分**：`PhotoPreviewPageViewController`(1813) 拆分 → 重点真机回归飞入/飞回转场、pinch-zoom、下拉关闭、双 AVPlayer 合并后的视频/Live Photo 播放（R1-R12 的 iOS 对应）。本环境无法编译 iOS,须在 Xcode 逐步做。
-- **M5 系统框架内换（iOS）**：`PHLivePhotoView` 播放保真度、`PHAssetResource` 导出/存相册。真机验证。
+- ~~**M5 iOS Live Photo 播放改 `PHLivePhotoView`**~~ —— **已完成**（提交 925a233），见上方 E2 节的验证项。
+- **（未做，已决定跳过）导出/存相册改 `PHAssetResource`**：当前实现工作正常，纯锦上添花，未做。
