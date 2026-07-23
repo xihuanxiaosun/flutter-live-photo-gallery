@@ -153,6 +153,13 @@ final class PreviewVideoPlayerController {
         isPlaying = false
     }
 
+    /// 校验某次 Live Photo 播放代次是否仍是当前代次（手指未抬起、未开始新一轮）。
+    /// PHLivePhotoView 路径（相册来源）在 requestLivePhoto 回调里据此决定是否真正开始播放，
+    /// 与 `playVideoDirectly(url:generation:)` 内部的守卫同源——代次这一状态只存在于本类。
+    func isPlaybackGenerationCurrent(_ generation: Int) -> Bool {
+        generation == playbackGeneration
+    }
+
     /// Live Photo 入口：无播放按钮，延迟一小段时间后自动播放并淡出封面图，
     /// 播放结束直接走 stopVideo() 复原。
     ///

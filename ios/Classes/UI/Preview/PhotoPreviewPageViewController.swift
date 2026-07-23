@@ -50,12 +50,25 @@ class SinglePhotoViewController: UIViewController {
     /// 因此可以在转发前安全地判断「这一页到底有没有播放器」。
     private var hasVideoPlayerController = false
 
+    /// 相册 Live Photo 的原生播放器（PHLivePhotoView）。
+    /// 懒加载：只有 .photoLibrary 来源长按播放 Live Photo 时才创建，纯图片/视频页不触发。
+    /// 代次由 videoPlayerController 统一持有，本播放器只负责显示/移除 PHLivePhotoView。
+    private lazy var livePhotoPlayer: PreviewLivePhotoPlayer = {
+        self.hasLivePhotoPlayer = true
+        return PreviewLivePhotoPlayer(hostView: self.view, imageView: self.imageView)
+    }()
+
+    /// livePhotoPlayer 是否已实例化；读它不会触发懒加载，纯视频页 stopVideo() 据此免于空转实例化。
+    private var hasLivePhotoPlayer = false
+
     private var isLoadingVideo = false  // 防止异步加载期间重复触发
 
     /// 记录 PHImageManager 的图片请求 ID，页面消失时取消以释放内存压力
     private var imageRequestID: PHImageRequestID?
     /// 记录视频资源请求 ID，页面消失时取消
     private var videoRequestID: PHImageRequestID?
+    /// 记录 Live Photo 请求 ID，页面消失时取消，避免回调乱序与内存积压
+    private var livePhotoRequestID: PHImageRequestID?
 
     // 视频控制 UI
     private let playButton: UIButton = {
@@ -125,6 +138,10 @@ class SinglePhotoViewController: UIViewController {
         if let id = videoRequestID {
             PHImageManager.default().cancelImageRequest(id)
             videoRequestID = nil
+        }
+        if let id = livePhotoRequestID {
+            PHImageManager.default().cancelImageRequest(id)
+            livePhotoRequestID = nil
         }
     }
 
@@ -342,8 +359,9 @@ class SinglePhotoViewController: UIViewController {
 
     // MARK: - Live Photo 播放
 
-    // 抽帧编排留在页面里；播放状态机（是否播放中、播放代次）全部封装在
-    // videoPlayerController，页面只负责把代次原样回传。
+    // 相册来源用 PHLivePhotoView 原生播放；网络/本地来源没有真正的 PHLivePhoto，
+    // 仍走 videoPlayerController 的 AVPlayer 路径。播放状态机（是否播放中、播放代次）
+    // 全部封装在 videoPlayerController，页面只负责把代次原样回传/比对。
 
     func playLivePhoto() {
         guard asset.isLivePhoto else { return }
@@ -378,29 +396,64 @@ class SinglePhotoViewController: UIViewController {
             return
         }
 
-        // generation 为本次播放代次；抬指(stopVideo)会自增代次，
-        // playVideoDirectly 内部据此丢弃已经过期的抽帧结果
-        LivePhotoExtractor.shared.extractVideo(from: phAsset) { [weak self] result in
-            guard let self = self else { return }
+        // 取消上一次未完成的 Live Photo 请求，快速长按/翻页时避免回调乱序
+        if let prev = livePhotoRequestID {
+            PHImageManager.default().cancelImageRequest(prev)
+            livePhotoRequestID = nil
+        }
 
-            switch result {
-            case .success(let url):
-                DispatchQueue.main.async {
-                    self.videoPlayerController.playVideoDirectly(url: url, generation: generation)
-                }
-            case .failure:
-                DispatchQueue.main.async {
+        let options = PHLivePhotoRequestOptions()
+        options.isNetworkAccessAllowed = true
+        options.deliveryMode = .highQualityFormat
+
+        // generation 为本次播放代次；抬指(stopVideo)会自增代次。
+        // 请求返回后据此比对：手指已抬起或已开始新一轮播放时整个结果作废，绝不开始播放。
+        livePhotoRequestID = PHImageManager.default().requestLivePhoto(
+            for: phAsset,
+            targetSize: livePhotoTargetSize(),
+            contentMode: .aspectFit,
+            options: options
+        ) { [weak self] livePhoto, info in
+            guard let self = self else { return }
+            // 忽略 opportunistic 先返回的降质版本，只在最终高清结果上开始播放
+            if (info?[PHImageResultIsDegradedKey] as? Bool) ?? false { return }
+
+            DispatchQueue.main.async {
+                // 代次比对必须先于一切副作用（含清空 requestID）：过期结果既不播放、
+                // 也不能清空 livePhotoRequestID——否则旧请求的迟到回调会把新一轮请求的
+                // ID 抹掉，导致新请求无法在 viewWillDisappear 被取消（请求泄漏至完成）。
+                guard self.videoPlayerController.isPlaybackGenerationCurrent(generation) else { return }
+                self.livePhotoRequestID = nil
+                guard let livePhoto = livePhoto else {
                     self.videoPlayerController.abortLivePhotoPlayback()
+                    return
                 }
+                self.livePhotoPlayer.play(livePhoto)
             }
         }
     }
 
+    /// PHLivePhoto 请求的目标尺寸：按屏幕像素取 view 的物理尺寸，取不到时退回最大尺寸。
+    private func livePhotoTargetSize() -> CGSize {
+        let scale = view.window?.screen.scale ?? UIScreen.main.scale
+        let bounds = view.bounds
+        guard bounds.width > 0, bounds.height > 0 else { return PHImageManagerMaximumSize }
+        return CGSize(width: bounds.width * scale, height: bounds.height * scale)
+    }
+
     /// 停止播放并复原封面图；预览页翻页 / 抬指时由外部调用。
-    /// 从未播放过的页面（纯图片页）不会因此实例化播放器控制器。
+    /// 从未播放过的页面（纯图片页）不会因此实例化任何播放器。
+    ///
+    /// - videoPlayerController.stopVideo() 自增播放代次（作废进行中的 Live Photo 请求回调）、
+    ///   拆除 AVPlayer 观察者、把封面图淡回 alpha 1；
+    /// - livePhotoPlayer.stop() 移除相册来源的 PHLivePhotoView。
+    /// 两者各管各的视图，代次这一单一状态只由 videoPlayerController 持有。
     func stopVideo() {
         guard hasVideoPlayerController else { return }
         videoPlayerController.stopVideo()
+        if hasLivePhotoPlayer {
+            livePhotoPlayer.stop()
+        }
     }
 }
 
