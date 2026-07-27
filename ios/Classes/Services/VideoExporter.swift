@@ -32,7 +32,10 @@ final class VideoExporter {
 
     // MARK: - 导出视频
 
-    func exportVideo(for asset: PHAsset, completion: @escaping (Result<String, Error>) -> Void) {
+    /// - Parameter original: true 时用 `AVAssetExportPresetPassthrough` 原样拷贝原始轨道
+    ///   （不转码、不降分辨率），容器沿用源文件类型；若该资源不支持 passthrough 则回退到
+    ///   `AVAssetExportPreset1920x1080`（≤1080p mp4），与 original == false 的行为一致。
+    func exportVideo(for asset: PHAsset, original: Bool = false, completion: @escaping (Result<String, Error>) -> Void) {
         guard asset.mediaType == .video else {
             completion(.failure(PhotoLibraryError.invalidMediaType))
             return
@@ -51,10 +54,22 @@ final class VideoExporter {
                 return
             }
 
-            let outputURL = URL(fileURLWithPath: (FileConstants.temporaryDirectory as NSString)
-                .appendingPathComponent("lpg_\(UUID().uuidString).\(FileConstants.videoExtension)"))
+            // 选择导出预设：original 优先 passthrough（原样拷贝轨道），否则 1080p 转码。
+            // passthrough 不改编码，容器沿用源文件扩展名即可，保证输出类型必被支持。
+            let usePassthrough = original
+                && AVAssetExportSession.exportPresets(compatibleWith: urlAsset)
+                    .contains(AVAssetExportPresetPassthrough)
+            let presetName = usePassthrough
+                ? AVAssetExportPresetPassthrough
+                : AVAssetExportPreset1920x1080
+            let (fileType, ext): (AVFileType, String) = usePassthrough
+                ? Self.passthroughContainer(for: urlAsset)
+                : (.mp4, FileConstants.videoExtension)
 
-            guard let exportSession = AVAssetExportSession(asset: urlAsset, presetName: AVAssetExportPreset1920x1080) else {
+            let outputURL = URL(fileURLWithPath: (FileConstants.temporaryDirectory as NSString)
+                .appendingPathComponent("lpg_\(UUID().uuidString).\(ext)"))
+
+            guard let exportSession = AVAssetExportSession(asset: urlAsset, presetName: presetName) else {
                 completion(.failure(LivePhotoError.exportSessionCreationFailed))
                 return
             }
@@ -64,7 +79,7 @@ final class VideoExporter {
                     // 使用 iOS 15 兼容写法（export(to:as:) 仅 iOS 18+）
                     try await exportSession.exportAsync(
                         to: outputURL,
-                        as: .mp4,
+                        as: fileType,
                         fallbackError: PhotoLibraryError.exportFailed(
                             underlying: NSError(domain: "PhotoLibraryManager", code: -3))
                     )
@@ -73,6 +88,19 @@ final class VideoExporter {
                     completion(.failure(PhotoLibraryError.exportFailed(underlying: error)))
                 }
             }
+        }
+    }
+
+    /// passthrough 导出的输出容器：沿用源文件扩展名，避免把 .mov 原始轨道硬塞进 mp4。
+    private static func passthroughContainer(for urlAsset: AVURLAsset) -> (fileType: AVFileType, ext: String) {
+        switch urlAsset.url.pathExtension.lowercased() {
+        case "mov", "qt":
+            return (.mov, "mov")
+        case "m4v":
+            return (.m4v, "m4v")
+        default:
+            // mp4 及未知扩展名统一按 mp4 容器（passthrough 不改编码，源多为 mp4/mov）
+            return (.mp4, "mp4")
         }
     }
 }

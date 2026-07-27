@@ -520,14 +520,28 @@ class LivePhotoGallery {
   // [format] 不在上述三者之内时抛出 LivePhotoException(code: 'INVALID_ARGS')，
   // 与迁移前 iOS 侧 PhotoLibraryError.invalidMediaType 的行为一致——
   // 拼错的 format 必须报错，而不是静默退化成导出静态图。
+  //
+  // [original]（默认 `false`，向后兼容）控制是否返回**未经再编码/转码的原始文件**：
+  //   - `false`（默认）：保持既有行为。iOS 返回 web 友好的再编码版本
+  //     （静态图下采样至 1600×1600、JPEG 85%；视频转码为 ≤1080p 的 mp4）；
+  //     Android 直接回原始字节。适合上传前需要压缩、或直接展示的场景。
+  //   - `true`：返回**真原图 / 原视频**。iOS 走 `requestImageDataAndOrientation`
+  //     的原始字节（保留原始 UTI 与扩展名，避免全分辨率解码引发的 OOM）、视频用
+  //     `AVAssetExportPresetPassthrough` 原样拷贝轨道（不支持 passthrough 时回退到
+  //     ≤1080p 转码）；Android 本就返回原始字节，因此该标记在 Android 为 no-op。
+  //     需要把原文件上传到后端做归档/校验时用 `true`。
+  //
+  // 注意：`format == "livePhotoVideo"` 时 [original] 被忽略——Live Photo 的配对
+  // 视频提取本身即无损，不存在「再编码」版本。
   // ────────────────────────────────────────────────
   static Future<String?> exportAsset({
     required String assetId,
     required String format,
+    bool original = false,
   }) async {
     final pgFormat = _parseExportFormat(format);
     try {
-      return await _host.exportAsset(assetId, pgFormat);
+      return await _host.exportAsset(assetId, pgFormat, original);
     } on PlatformException catch (e) {
       throw LivePhotoException(code: e.code, message: e.message ?? '');
     }

@@ -104,8 +104,8 @@ final class PhotoLibraryManager: PhotoLibraryManaging {
 
     // MARK: - 导出视频
 
-    func exportVideo(for asset: PHAsset, completion: @escaping (Result<String, Error>) -> Void) {
-        videoExporter.exportVideo(for: asset, completion: completion)
+    func exportVideo(for asset: PHAsset, original: Bool = false, completion: @escaping (Result<String, Error>) -> Void) {
+        videoExporter.exportVideo(for: asset, original: original, completion: completion)
     }
 
     // MARK: - 缓存管理

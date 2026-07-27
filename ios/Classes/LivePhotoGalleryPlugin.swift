@@ -134,10 +134,11 @@ public class LivePhotoGalleryPlugin: NSObject, FlutterPlugin, LivePhotoGalleryHo
     func exportAsset(
         assetId: String,
         format: PgExportFormat,
+        original: Bool,
         completion: @escaping (Result<String?, Error>) -> Void
     ) {
         LivePhotoGalleryCore.shared.exportAsset(
-            args: ["assetId": assetId, "format": format.wire]
+            args: ["assetId": assetId, "format": format.wire, "original": original]
         ) { outcome in
             Self.finishPath(outcome, key: "filePath", completion: completion)
         }

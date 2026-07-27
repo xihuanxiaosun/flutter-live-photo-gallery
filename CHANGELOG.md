@@ -7,6 +7,17 @@
 
 ### 新增
 
+**`exportAsset` 新增 `original` 选项（默认 `false`，向后兼容）**
+- `exportAsset(assetId:, format:, original: false)` 默认行为不变：iOS 返回 web 友好的
+  再编码版本（静态图下采样 1600×1600 / JPEG 85%，视频转码 ≤1080p mp4），Android 返回原始字节
+- 传 `original: true` 时在**两端**都返回未经再编码/转码的**真原图/原视频**：
+  iOS 图片走 `requestImageDataAndOrientation` 的原始字节（保留原始 UTI/扩展名），
+  视频用 `AVAssetExportPresetPassthrough` 原样拷贝轨道（不支持 passthrough 时回退到 1080p 转码）；
+  Android 本就逐字节拷贝 MediaStore 原文件，该标记为 no-op
+- 修复：此前 iOS 的 `exportAsset(format: "image")` 会静默下采样并转 JPEG，与 Android 返回原图的
+  行为不一致；上传后端做归档/校验的调用方应传 `original: true`
+- `format == "livePhotoVideo"` 时 `original` 被忽略（Live Photo 视频提取本身即无损）
+
 **`PickerConfig.autoPlayVideo`（默认 `false`，向后兼容）**
 - 传 `true` 时，`previewAssets` 进入视频页会自动播放当前页视频（仅当前页；相邻页/相册 Live Photo 不会自动播）
 - 默认 `false`，不传或旧调用行为完全不变

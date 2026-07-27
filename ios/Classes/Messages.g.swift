@@ -572,8 +572,15 @@ protocol LivePhotoGalleryHostApi {
   func previewAssets(request: PgPreviewRequest, completion: @escaping (Result<PgPickResult?, Error>) -> Void)
   /// 返回本地缩略图路径
   func getThumbnail(assetId: String, width: Double, height: Double, completion: @escaping (Result<String?, Error>) -> Void)
-  /// 导出资源原文件到临时目录，返回本地路径
-  func exportAsset(assetId: String, format: PgExportFormat, completion: @escaping (Result<String?, Error>) -> Void)
+  /// 导出资源原文件到临时目录，返回本地路径。
+  ///
+  /// [original] = false（默认）：保持既有行为——iOS 返回 web 友好的再编码版本
+  ///   （图片下采样 1600×1600 / JPEG，视频转码 ≤1080p）；Android 返回原始字节。
+  /// [original] = true：返回未经再编码/转码的真原图/原视频——iOS 走原始图片字节
+  ///   （requestImageDataAndOrientation）/ 视频 passthrough；Android 本就是原图，
+  ///   故该参数在 Android 为 no-op。format == livePhotoVideo 时 [original] 被忽略
+  ///   （视频轨提取本身即无损）。
+  func exportAsset(assetId: String, format: PgExportFormat, original: Bool, completion: @escaping (Result<String?, Error>) -> Void)
   /// 清理插件产生的临时文件
   func cleanupTempFiles(completion: @escaping (Result<Void, Error>) -> Void)
 }
@@ -656,14 +663,22 @@ class LivePhotoGalleryHostApiSetup {
     } else {
       getThumbnailChannel.setMessageHandler(nil)
     }
-    /// 导出资源原文件到临时目录，返回本地路径
+    /// 导出资源原文件到临时目录，返回本地路径。
+    ///
+    /// [original] = false（默认）：保持既有行为——iOS 返回 web 友好的再编码版本
+    ///   （图片下采样 1600×1600 / JPEG，视频转码 ≤1080p）；Android 返回原始字节。
+    /// [original] = true：返回未经再编码/转码的真原图/原视频——iOS 走原始图片字节
+    ///   （requestImageDataAndOrientation）/ 视频 passthrough；Android 本就是原图，
+    ///   故该参数在 Android 为 no-op。format == livePhotoVideo 时 [original] 被忽略
+    ///   （视频轨提取本身即无损）。
     let exportAssetChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.live_photo_gallery.LivePhotoGalleryHostApi.exportAsset\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       exportAssetChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let assetIdArg = args[0] as! String
         let formatArg = args[1] as! PgExportFormat
-        api.exportAsset(assetId: assetIdArg, format: formatArg) { result in
+        let originalArg = args[2] as! Bool
+        api.exportAsset(assetId: assetIdArg, format: formatArg, original: originalArg) { result in
           switch result {
           case .success(let res):
             reply(wrapResult(res))

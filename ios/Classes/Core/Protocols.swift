@@ -23,6 +23,7 @@ protocol PhotoLibraryManaging {
 
     func exportVideo(
         for asset: PHAsset,
+        original: Bool,
         completion: @escaping (Result<String, Error>) -> Void
     )
 

@@ -379,15 +379,21 @@ void main() {
   // ──────────────────────────────────────────────────────────────────────────
 
   group('exportAsset format → PgExportFormat', () {
-    test('三个合法值分别映射', () async {
+    test('三个合法值分别映射（original 默认 false）', () async {
       for (final (raw, expected) in const <(String, PgExportFormat)>[
         ('image', PgExportFormat.image),
         ('video', PgExportFormat.video),
         ('livePhotoVideo', PgExportFormat.livePhotoVideo),
       ]) {
         await LivePhotoGallery.exportAsset(assetId: 'a1', format: raw);
-        expect(captured, ['a1', expected]);
+        expect(captured, ['a1', expected, false]);
       }
+    });
+
+    test('original: true 作为第三个 wire 参数透传', () async {
+      await LivePhotoGallery.exportAsset(
+          assetId: 'a1', format: 'image', original: true);
+      expect(captured, ['a1', PgExportFormat.image, true]);
     });
 
     test('非法 format 抛 INVALID_ARGS，且不会发出任何 native 调用', () async {

@@ -23,9 +23,13 @@ class ExportManager {
 
     // MARK: - 统一导出媒体文件
 
+    /// - Parameter original: true 时导出未经再编码/转码的原始文件——
+    ///   `.image` 走原始图片字节（原始 UTI/扩展名），`.video` 走 passthrough（原样拷贝轨道）。
+    ///   false（默认）保持既有的 web 友好再编码行为。`.livePhotoVideo` 忽略该参数。
     func export(
         assetId: String,
         format: ExportFormat,
+        original: Bool = false,
         completion: @escaping (Result<String, Error>) -> Void
     ) {
         guard let asset = fetchAsset(by: assetId) else {
@@ -34,10 +38,11 @@ class ExportManager {
         }
         switch format {
         case .image:
-            PhotoLibraryManager.shared.exportFullImage(for: asset, completion: completion)
+            PhotoLibraryManager.shared.exportFullImage(for: asset, useOriginal: original, completion: completion)
         case .video:
-            PhotoLibraryManager.shared.exportVideo(for: asset, completion: completion)
+            PhotoLibraryManager.shared.exportVideo(for: asset, original: original, completion: completion)
         case .livePhotoVideo:
+            // Live Photo 视频提取本身即无损，无「再编码」版本，original 不适用。
             PhotoLibraryManager.shared.exportLivePhotoVideo(for: asset, completion: completion)
         }
     }

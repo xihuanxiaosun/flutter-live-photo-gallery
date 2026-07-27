@@ -572,8 +572,17 @@ interface LivePhotoGalleryHostApi {
   fun previewAssets(request: PgPreviewRequest, callback: (Result<PgPickResult?>) -> Unit)
   /** 返回本地缩略图路径 */
   fun getThumbnail(assetId: String, width: Double, height: Double, callback: (Result<String?>) -> Unit)
-  /** 导出资源原文件到临时目录，返回本地路径 */
-  fun exportAsset(assetId: String, format: PgExportFormat, callback: (Result<String?>) -> Unit)
+  /**
+   * 导出资源原文件到临时目录，返回本地路径。
+   *
+   * [original] = false（默认）：保持既有行为——iOS 返回 web 友好的再编码版本
+   *   （图片下采样 1600×1600 / JPEG，视频转码 ≤1080p）；Android 返回原始字节。
+   * [original] = true：返回未经再编码/转码的真原图/原视频——iOS 走原始图片字节
+   *   （requestImageDataAndOrientation）/ 视频 passthrough；Android 本就是原图，
+   *   故该参数在 Android 为 no-op。format == livePhotoVideo 时 [original] 被忽略
+   *   （视频轨提取本身即无损）。
+   */
+  fun exportAsset(assetId: String, format: PgExportFormat, original: Boolean, callback: (Result<String?>) -> Unit)
   /** 清理插件产生的临时文件 */
   fun cleanupTempFiles(callback: (Result<Unit>) -> Unit)
 
@@ -673,7 +682,8 @@ interface LivePhotoGalleryHostApi {
             val args = message as List<Any?>
             val assetIdArg = args[0] as String
             val formatArg = args[1] as PgExportFormat
-            api.exportAsset(assetIdArg, formatArg) { result: Result<String?> ->
+            val originalArg = args[2] as Boolean
+            api.exportAsset(assetIdArg, formatArg, originalArg) { result: Result<String?> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(wrapError(error))

@@ -252,6 +252,10 @@ class LivePhotoGalleryPlugin : FlutterPlugin, LivePhotoGalleryHostApi, ActivityA
     override fun exportAsset(
         assetId: String,
         format: PgExportFormat,
+        // Android 的 exportImage/exportVideo 走 copyFromUri，逐字节拷贝 MediaStore 原文件，
+        // 导出恒为原图/原视频保真度。故 original 标记在 Android 是 no-op（iOS 才有再编码/转码
+        // 版本与原始版本之分）；这里接收但无需据此改变行为，不会对 Android 引入任何缩放/转码。
+        original: Boolean,
         callback: (Result<String?>) -> Unit
     ) {
         val ctx = context ?: run {

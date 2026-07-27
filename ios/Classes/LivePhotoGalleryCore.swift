@@ -172,8 +172,9 @@ class LivePhotoGalleryCore {
     }
 
     // MARK: - exportAsset
-    // Flutter 传入: assetId, format ("image" | "video" | "livePhotoVideo")
+    // Flutter 传入: assetId, format ("image" | "video" | "livePhotoVideo"), original(Bool)
     // 返回: {filePath: String}
+    // original == true 时返回未经再编码/转码的原始文件（原图字节 / 视频 passthrough）。
 
     func exportAsset(
         args: [String: Any],
@@ -186,7 +187,8 @@ class LivePhotoGalleryCore {
             completion(.failure(PhotoLibraryError.invalidMediaType))
             return
         }
-        ExportManager.shared.export(assetId: assetId, format: format) { result in
+        let original = args["original"] as? Bool ?? false
+        ExportManager.shared.export(assetId: assetId, format: format, original: original) { result in
             switch result {
             case .success(let path):
                 completion(.success(PluginBridge.buildExportResult(path: path)))
