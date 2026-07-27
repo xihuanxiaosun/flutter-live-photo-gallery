@@ -20,11 +20,13 @@ import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -40,6 +42,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions
 import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -83,6 +86,7 @@ class PreviewActivity : AppCompatActivity() {
     private lateinit var btnDone:     MaterialButton
     private lateinit var bottomBar:   View
     private lateinit var topBar:      View
+    private lateinit var pageIndicator: LinearLayout
 
     // ──────────────────────────────────────────────
     // 状态
@@ -150,6 +154,10 @@ class PreviewActivity : AppCompatActivity() {
     private var touchDownX           = 0f
     private var dismissDragActive    = false
     private var dismissCancelSent    = false  // 只向 ViewPager2 发一次 CANCEL
+    private var velocityTracker: VelocityTracker? = null  // 计算竖直速度，支持快速轻甩关闭
+
+    // 底部导航栏 inset（px），供纯预览模式定位页码指示器
+    private var bottomInsetPx = 0
 
     private val dismissStartThresholdPx  by lazy { resources.displayMetrics.density * DISMISS_START_DP }
     private val dismissCommitThresholdPx by lazy { resources.displayMetrics.density * DISMISS_COMMIT_DP }
@@ -187,18 +195,21 @@ class PreviewActivity : AppCompatActivity() {
 
     private fun setupShareButton() {
         if (btnShare != null) return  // 防止重复添加（Activity 配置变更重建时）
+        val widthPx   = resources.getDimensionPixelSize(R.dimen.preview_share_button_width)
+        val heightPx  = resources.getDimensionPixelSize(R.dimen.preview_share_button_height)
+        val marginEndPx = resources.getDimensionPixelSize(R.dimen.preview_share_button_margin_end)
+        val paddingPx = resources.getDimensionPixelSize(R.dimen.preview_share_button_padding)
         val shareBtn = android.widget.ImageView(this).apply {
-            val sizePx = dp(44)
-            layoutParams = FrameLayout.LayoutParams(sizePx, dp(48)).also {
+            layoutParams = FrameLayout.LayoutParams(widthPx, heightPx).also {
                 it.gravity = android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL
-                it.marginEnd = dp(128)
+                it.marginEnd = marginEndPx
             }
             setImageDrawable(
-                ContextCompat.getDrawable(this@PreviewActivity, android.R.drawable.ic_menu_share)
+                ContextCompat.getDrawable(this@PreviewActivity, R.drawable.ic_share)
             )
             imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
             contentDescription = "分享"
-            setPadding(dp(10), dp(10), dp(10), dp(10))
+            setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
             setOnClickListener { shareCurrentAsset() }
         }
         btnShare = shareBtn
@@ -223,8 +234,12 @@ class PreviewActivity : AppCompatActivity() {
                 touchDownX        = ev.rawX
                 dismissDragActive = false
                 dismissCancelSent = false
+                velocityTracker?.recycle()
+                velocityTracker = VelocityTracker.obtain()
+                velocityTracker?.addMovement(ev)
             }
             MotionEvent.ACTION_MOVE -> {
+                velocityTracker?.addMovement(ev)
                 if (!dismissDragActive) {
                     val dy = ev.rawY - touchDownY
                     val dx = ev.rawX - touchDownX
@@ -249,9 +264,18 @@ class PreviewActivity : AppCompatActivity() {
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                // 计算竖直方向速度（px/s），支持“位移小但下滑快”的轻甩关闭；随后无论是否拖拽都回收 tracker
+                val yVelocity = velocityTracker?.let { vt ->
+                    vt.addMovement(ev)
+                    vt.computeCurrentVelocity(1000)
+                    vt.yVelocity
+                } ?: 0f
+                velocityTracker?.recycle()
+                velocityTracker = null
                 if (dismissDragActive) {
                     val dy = ev.rawY - touchDownY
-                    if (dy > dismissCommitThresholdPx) {
+                    if (dy > dismissCommitThresholdPx ||
+                        (yVelocity > FLING_DISMISS_VELOCITY && dy > dismissStartThresholdPx)) {
                         finishWithSlideDown()
                         return true  // 消费事件，不再传递
                     } else {
@@ -291,6 +315,7 @@ class PreviewActivity : AppCompatActivity() {
             .start()
         previewScrim.animate().alpha(1f).setDuration(SNAP_BACK_DURATION_MS).start()
         topBar.animate().alpha(1f).setDuration(SNAP_BACK_DURATION_MS).start()
+        pageIndicator.animate().alpha(1f).setDuration(SNAP_BACK_DURATION_MS).start()
         if (showRadio) {
             bottomBar.animate().alpha(1f).setDuration(SNAP_BACK_DURATION_MS).start()
         }
@@ -353,6 +378,7 @@ class PreviewActivity : AppCompatActivity() {
         btnDone        = findViewById(R.id.btn_done)
         bottomBar      = findViewById(R.id.bottom_bar)
         topBar         = findViewById(R.id.top_bar)
+        pageIndicator  = findViewById(R.id.page_indicator)
 
         applyWindowInsets()
 
@@ -362,11 +388,17 @@ class PreviewActivity : AppCompatActivity() {
 
         viewPager.adapter = PreviewPagerAdapter()
         viewPager.setCurrentItem(initialIndex, false)
+        buildPageIndicator()
+        // 底栏高度随 inset/旋转变化时，重新定位指示器使其恰好浮在底栏之上
+        bottomBar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> positionPageIndicator() }
         updateCountLabel(initialIndex)
         updateSelectButton(initialIndex)
 
         viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
+                // 翻页离开正在播放的视频：先停止上一页播放（恢复其封面帧、停音频），
+                // 下方 autoPlay 分支再按需为新页启动播放。
+                videoController.stopCurrent()
                 updateCountLabel(position)
                 updateSelectButton(position)
                 updateDownloadButton(position)
@@ -381,6 +413,16 @@ class PreviewActivity : AppCompatActivity() {
                 }
             }
         })
+
+        // 初始页自动播放：setCurrentItem(initialIndex, false) 早于 registerOnPageChangeCallback，
+        // onPageSelected 不会为初始页触发，故初始视频页需在此显式补一次自动播放。
+        if (autoPlayVideo) {
+            val a = previewAssets.getOrNull(initialIndex)
+            if ((a?.get("mediaType") as? String) == "video") {
+                autoPlayedPositions.add(initialIndex)
+                viewPager.post { triggerAutoPlay(initialIndex) }
+            }
+        }
 
         btnClose.setOnClickListener {
             returnSelectedResults()
@@ -449,6 +491,7 @@ class PreviewActivity : AppCompatActivity() {
         previewStage.alpha = 0f
         previewScrim.alpha = 0f
         topBar.alpha = 0f
+        pageIndicator.alpha = 0f
         if (showRadio) {
             bottomBar.alpha = 0f
         }
@@ -459,6 +502,7 @@ class PreviewActivity : AppCompatActivity() {
             previewStage.alpha = 1f
             previewScrim.alpha = 1f
             topBar.alpha = 1f
+            pageIndicator.alpha = 1f
             if (showRadio) {
                 bottomBar.alpha = 1f
             }
@@ -483,9 +527,84 @@ class PreviewActivity : AppCompatActivity() {
         ViewCompat.setOnApplyWindowInsetsListener(bottomBar) { v, insets ->
             val navBars = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
             v.setPadding(v.paddingLeft, v.paddingTop, v.paddingRight, navBars.bottom)
+            bottomInsetPx = navBars.bottom
+            positionPageIndicator()
             insets
         }
     }
+
+    /**
+     * 页码指示器的底部间距：
+     *   - 选择模式(showRadio=true)：浮在底部操作栏之上（bottomBar.height 已含导航栏 inset padding）
+     *   - 纯预览模式：仅在底部安全区(bottomInsetPx)之上
+     */
+    private fun positionPageIndicator() {
+        if (!::pageIndicator.isInitialized) return
+        val lp = (pageIndicator.layoutParams as? FrameLayout.LayoutParams) ?: return
+        val extra = resources.getDimensionPixelSize(R.dimen.preview_page_indicator_margin_bottom)
+        val newBottom = if (showRadio) bottomBar.height + extra else bottomInsetPx + extra
+        if (lp.bottomMargin != newBottom) {
+            lp.bottomMargin = newBottom
+            pageIndicator.layoutParams = lp
+        }
+    }
+
+    /**
+     * 构建页码指示器：≤8 张用圆点，>8 张用 "n / total" 药丸；≤1 张隐藏。
+     * 在 adapter/数量已知后调用一次；随后由 updatePageIndicator(position) 驱动高亮/文本。
+     */
+    private fun buildPageIndicator() {
+        pageIndicator.removeAllViews()
+        val total = previewAssets.size
+        // 底部圆点仅服务「少量图文混排」(2..8，信息流常见场景)：更多时改由顶部 tv_count
+        // 计数承担，避免顶/底两处重复计数（与 iOS 一致）。
+        if (total <= 1 || total > PAGE_INDICATOR_DOT_MAX) {
+            pageIndicator.visibility = View.GONE
+            return
+        }
+        pageIndicator.visibility = View.VISIBLE
+        pageIndicator.background = null
+        pageIndicator.setPadding(0, 0, 0, 0)
+        val size = resources.getDimensionPixelSize(R.dimen.preview_page_indicator_dot_size)
+        val gap  = resources.getDimensionPixelSize(R.dimen.preview_page_indicator_dot_gap)
+        for (i in 0 until total) {
+            val dot = View(this).apply {
+                layoutParams = LinearLayout.LayoutParams(size, size).also {
+                    if (i > 0) it.marginStart = gap
+                }
+            }
+            pageIndicator.addView(dot)
+        }
+        updatePageIndicator(viewPager.currentItem)
+    }
+
+    /** 高亮当前圆点，由 updateCountLabel 同步驱动；视频页隐藏以让开内联播放控件 */
+    private fun updatePageIndicator(position: Int) {
+        if (!::pageIndicator.isInitialized) return
+        if (pageIndicator.childCount == 0) return
+        // 视频页底部由内联 ExoPlayer 控件占据，隐藏圆点避免重叠（视频自带进度条提供
+        // 位置语境）；翻回图片页再恢复。
+        val mediaType = (previewAssets.getOrNull(position)?.get("mediaType") as? String) ?: "image"
+        if (mediaType == "video") {
+            pageIndicator.visibility = View.GONE
+            return
+        }
+        pageIndicator.visibility = View.VISIBLE
+        for (i in 0 until pageIndicator.childCount) {
+            pageIndicator.getChildAt(i).background = makeDotDrawable(active = i == position)
+        }
+    }
+
+    private fun makeDotDrawable(active: Boolean): android.graphics.drawable.GradientDrawable =
+        android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setColor(
+                ContextCompat.getColor(
+                    this@PreviewActivity,
+                    if (active) R.color.preview_dot_active else R.color.preview_dot_inactive,
+                )
+            )
+        }
 
     // ──────────────────────────────────────────────
     // UI 状态
@@ -493,6 +612,7 @@ class PreviewActivity : AppCompatActivity() {
 
     private fun updateCountLabel(position: Int) {
         tvCount.text = "${position + 1}/${previewAssets.size}"
+        updatePageIndicator(position)
     }
 
     private fun updateSelectButton(position: Int) {
@@ -670,6 +790,7 @@ class PreviewActivity : AppCompatActivity() {
         previewStage.alpha = t.stageAlpha
         previewScrim.alpha = t.scrimAlpha
         topBar.alpha = t.barAlpha
+        pageIndicator.alpha = t.barAlpha
         if (showRadio) {
             bottomBar.alpha = t.barAlpha
         }
@@ -848,6 +969,7 @@ class PreviewActivity : AppCompatActivity() {
             .start()
         previewScrim.animate().alpha(1f).setDuration(ENTER_ANIM_DURATION_MS).start()
         topBar.animate().alpha(1f).setDuration(ENTER_ANIM_DURATION_MS).start()
+        pageIndicator.animate().alpha(1f).setDuration(ENTER_ANIM_DURATION_MS).start()
         if (showRadio) {
             bottomBar.animate().alpha(1f).setDuration(ENTER_ANIM_DURATION_MS).start()
         }
@@ -869,6 +991,7 @@ class PreviewActivity : AppCompatActivity() {
         previewStage.pivotX = target.pivotX
         previewStage.pivotY = target.pivotY
         topBar.animate().alpha(0f).setDuration(DISMISS_ANIM_DURATION_MS).start()
+        pageIndicator.animate().alpha(0f).setDuration(DISMISS_ANIM_DURATION_MS).start()
         if (showRadio) {
             bottomBar.animate().alpha(0f).setDuration(DISMISS_ANIM_DURATION_MS).start()
         }
@@ -911,6 +1034,7 @@ class PreviewActivity : AppCompatActivity() {
             onProgress = { progress ->
                 previewScrim.alpha = progress
                 topBar.alpha = progress
+                pageIndicator.alpha = progress
                 if (showRadio) {
                     bottomBar.alpha = progress
                 }
@@ -919,6 +1043,7 @@ class PreviewActivity : AppCompatActivity() {
                 previewStage.alpha = 1f
                 previewScrim.alpha = 1f
                 topBar.alpha = 1f
+                pageIndicator.alpha = 1f
                 if (showRadio) {
                     bottomBar.alpha = 1f
                 }
@@ -951,6 +1076,7 @@ class PreviewActivity : AppCompatActivity() {
 
         previewStage.alpha = 0f
         topBar.alpha = 0f
+        pageIndicator.alpha = 0f
         if (showRadio) {
             bottomBar.alpha = 0f
         }
@@ -977,6 +1103,7 @@ class PreviewActivity : AppCompatActivity() {
 
     private fun animateDismissOut(onEnd: () -> Unit) {
         topBar.animate().alpha(0f).setDuration(DISMISS_ANIM_DURATION_MS).start()
+        pageIndicator.animate().alpha(0f).setDuration(DISMISS_ANIM_DURATION_MS).start()
         if (showRadio) {
             bottomBar.animate().alpha(0f).setDuration(DISMISS_ANIM_DURATION_MS).start()
         }
@@ -1024,11 +1151,19 @@ class PreviewActivity : AppCompatActivity() {
         )
     }
 
+    /**
+     * 是否为「已解码的真图」。占位色 ColorDrawable 的 intrinsicWidth/Height 为 -1，
+     * 必须排除：否则 Glide 同步塞入的占位色会让 zoomView.drawable 立即非空，骗过进场
+     * 动画“等真图”的重试门，导致 hero 飞入一个尺寸退化的纯色块而非照片本身。
+     */
+    private fun isDecodedImage(drawable: Drawable?): Boolean =
+        drawable != null && drawable.intrinsicWidth > 0 && drawable.intrinsicHeight > 0
+
     private fun resolveCurrentMediaRectOnScreen(): RectF? {
         val holder = (viewPager.getChildAt(0) as? RecyclerView)
             ?.findViewHolderForAdapterPosition(viewPager.currentItem) as? PreviewViewHolder
             ?: return null
-        return if (holder.zoomView.drawable != null) {
+        return if (isDecodedImage(holder.zoomView.drawable)) {
             holder.zoomView.getDisplayRectOnScreen()
                 ?: holder.itemView.globalRectF()
         } else {
@@ -1057,8 +1192,9 @@ class PreviewActivity : AppCompatActivity() {
         val holder = (viewPager.getChildAt(0) as? RecyclerView)
             ?.findViewHolderForAdapterPosition(viewPager.currentItem) as? PreviewViewHolder
             ?: return null
-        val drawable = holder.zoomView.drawable ?: return null
-        return drawable.constantState?.newDrawable(resources)?.mutate() ?: drawable.mutate()
+        val drawable = holder.zoomView.drawable
+        if (!isDecodedImage(drawable)) return null   // 占位色不作为 hero 源
+        return drawable!!.constantState?.newDrawable(resources)?.mutate() ?: drawable.mutate()
     }
 
     private fun toLocalRect(screenRect: RectF): RectF {
@@ -1219,9 +1355,15 @@ class PreviewActivity : AppCompatActivity() {
                 else -> null
             }
             if (thumbTarget != null) {
+                // 占位色 + 低分辨率缩略 + 短交叉淡入，消除“空白→图”的突兀闪烁。
+                // 占位色 ColorDrawable 会被 isDecodedImage() 视为“未就绪”，故进场 hero 动画
+                // 仍会等真图解码后再飞入，不会误用占位色块（见 resolveCurrentMediaRectOnScreen）。
                 Glide.with(zoomView.context)
                     .load(thumbTarget)
                     .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
+                    .placeholder(ColorDrawable(ContextCompat.getColor(zoomView.context, R.color.preview_placeholder)))
+                    .thumbnail(0.15f)
+                    .transition(DrawableTransitionOptions.withCrossFade(180))
                     .into(zoomView)
             }
 
@@ -1309,6 +1451,7 @@ class PreviewActivity : AppCompatActivity() {
         private const val DISMISS_START_DP       = 6f    // 开始识别下拉手势的最小 Y 位移
         private const val DISMISS_VERTICAL_RATIO = 1.5f  // 垂直/水平位移比：>34°偏角才触发，防误触横滑
         private const val DISMISS_COMMIT_DP      = 120f  // 超过此值触发关闭
+        private const val FLING_DISMISS_VELOCITY = 1400f // px/s：快速下滑轻甩关闭的最小竖直速度
         private const val DISMISS_FADE_DP        = 400f  // 背景完全淡出对应的位移
         private const val DISMISS_ANIM_DURATION_MS = 200L
         private const val SNAP_BACK_DURATION_MS    = 250L
@@ -1316,6 +1459,8 @@ class PreviewActivity : AppCompatActivity() {
         // DISMISS_SCALE_FACTOR / MIN_SCALE / HORIZONTAL_FACTOR 已移入 DismissGestureMath
         private const val ENTER_RETRY_DELAY_MS = 16L
         private const val MAX_ENTER_RETRIES = 10
+        // 页码指示器：≤此值用圆点，超过则用 "n / total" 药丸
+        private const val PAGE_INDICATOR_DOT_MAX = 8
     }
 
     private data class PreviewTransform(

@@ -146,6 +146,18 @@
                 android:text="完成" />
 
         </LinearLayout>
+
+        <!-- 底部页码指示器：≤8 张用圆点，否则用 "n / total" 药丸；水平居中，浮在底栏/底部安全区之上。
+             具体底部间距由 PreviewActivity.positionPageIndicator() 依据模式动态设置 -->
+        <LinearLayout
+            android:id="@+id/page_indicator"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="@dimen/preview_page_indicator_margin_bottom"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone" />
     </FrameLayout>
 
 </FrameLayout>

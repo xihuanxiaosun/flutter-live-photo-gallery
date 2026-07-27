@@ -6,5 +6,10 @@
     <color name="lpg_black">#000000</color>
     <color name="lpg_surface">#FFFFFF</color>
     <color name="lpg_on_surface">#1C1C1E</color>
+    <!-- 预览加载占位色：铺在黑色 scrim 上的深灰，消除“空白→图”闪烁（预览恒为暗底，无需夜间覆盖） -->
+    <color name="preview_placeholder">#FF1A1A1A</color>
+    <!-- 预览底部页码指示器圆点：当前=白，其余=白@35% -->
+    <color name="preview_dot_active">#FFFFFFFF</color>
+    <color name="preview_dot_inactive">#59FFFFFF</color>
     <!-- 夜间模式覆盖在 values-night/colors.xml -->
 </resources>

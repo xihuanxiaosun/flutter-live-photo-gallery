@@ -65,6 +65,17 @@ internal class VideoPlaybackController(private val context: Context) {
         }
     }
 
+    /**
+     * 无条件停止当前承载表面的播放（翻页离开正在播放的视频时调用）。
+     * 撤离 PlayerView 恢复该页封面帧 + 播放按钮，暂停播放器并清空当前表面。
+     * 与 onSurfaceRecycled 逻辑一致，但不校验具体 surface。
+     */
+    fun stopCurrent() {
+        currentSurface?.releasePlayerView()
+        player?.pause()
+        currentSurface = null
+    }
+
     fun release() {
         currentSurface?.releasePlayerView()
         currentSurface = null

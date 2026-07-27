@@ -9,7 +9,9 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.animation.DecelerateInterpolator
+import android.widget.OverScroller
 import androidx.appcompat.widget.AppCompatImageView
+import kotlin.math.roundToInt
 
 /**
  * 轻量级的缩放图片控件。
@@ -34,6 +36,12 @@ class ZoomableImageView @JvmOverloads constructor(
     private var viewWidth = 0
     private var viewHeight = 0
 
+    // 记录最近一次缩放焦点，供 onScaleEnd 过度放大回弹到 MAX_SCALE 时复用
+    private var lastFocusX = 0f
+    private var lastFocusY = 0f
+    // 平移惯性（fling）：单指快速拖动松手后的减速滑动
+    private var flingRunnable: FlingRunnable? = null
+
     val currentScale: Float
         get() = getMatrixScale()
 
@@ -42,13 +50,19 @@ class ZoomableImageView @JvmOverloads constructor(
         object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
                 parent?.requestDisallowInterceptTouchEvent(true)
+                cancelFling()
                 return true
             }
 
             override fun onScale(detector: ScaleGestureDetector): Boolean {
-                val current = currentScale
-                val target = (current * detector.scaleFactor).coerceIn(MIN_SCALE, MAX_SCALE)
+                // 用未 coerce 的原始缩放值参与运算，避免低于 MIN 的橡皮筋被 coerce 隐藏而不断复利下探
+                val current = rawMatrixScale()
+                // 橡皮筋：允许短暂越界（低于 MIN、高于 MAX）带阻尼，松手后在 onScaleEnd 回弹
+                val target = (current * detector.scaleFactor)
+                    .coerceIn(MIN_SCALE * 0.9f, MAX_SCALE * 1.15f)
                 val delta = target / current
+                lastFocusX = detector.focusX
+                lastFocusY = detector.focusY
                 suppMatrix.postScale(delta, delta, detector.focusX, detector.focusY)
                 checkAndDisplayMatrix()
                 return true
@@ -56,8 +70,12 @@ class ZoomableImageView @JvmOverloads constructor(
 
             override fun onScaleEnd(detector: ScaleGestureDetector) {
                 parent?.requestDisallowInterceptTouchEvent(currentScale > MIN_SCALE + 0.01f)
-                if (currentScale <= MIN_SCALE + 0.01f) {
-                    resetTransform()
+                val rawScale = rawMatrixScale()
+                when {
+                    // 过度放大：回弹到 MAX_SCALE（复用缩放动画 + 最近焦点）
+                    rawScale > MAX_SCALE -> animateScaleTo(MAX_SCALE, lastFocusX, lastFocusY)
+                    // 缩到 1x 附近（含橡皮筋下探）：复位到初始 fit 状态
+                    rawScale < MIN_SCALE + 0.01f -> resetTransform()
                 }
             }
         }
@@ -66,7 +84,11 @@ class ZoomableImageView @JvmOverloads constructor(
     private val gestureDetector = GestureDetector(
         context,
         object : GestureDetector.SimpleOnGestureListener() {
-            override fun onDown(e: MotionEvent): Boolean = true
+            override fun onDown(e: MotionEvent): Boolean {
+                // 新一次触摸开始，取消正在进行的惯性滑动
+                cancelFling()
+                return true
+            }
 
             override fun onDoubleTap(e: MotionEvent): Boolean {
                 val target = if (currentScale > 1.2f) MIN_SCALE else DOUBLE_TAP_SCALE
@@ -81,8 +103,21 @@ class ZoomableImageView @JvmOverloads constructor(
                 distanceY: Float
             ): Boolean {
                 if (currentScale <= MIN_SCALE + 0.01f) return false
+                cancelFling()
                 suppMatrix.postTranslate(-distanceX, -distanceY)
                 checkAndDisplayMatrix()
+                return true
+            }
+
+            override fun onFling(
+                e1: MotionEvent?,
+                e2: MotionEvent,
+                velocityX: Float,
+                velocityY: Float
+            ): Boolean {
+                // 仅在已放大时启用平移惯性；未放大时交给下拉关闭/横向翻页
+                if (currentScale <= MIN_SCALE + 0.01f) return false
+                startFling(velocityX, velocityY)
                 return true
             }
         }
@@ -121,8 +156,15 @@ class ZoomableImageView @JvmOverloads constructor(
     }
 
     fun resetTransform() {
+        cancelFling()
         suppMatrix.reset()
         applyMatrix()
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        // 防止 View 脱离窗口后 fling 回调继续 post 造成泄漏
+        cancelFling()
     }
 
     fun getDisplayRectOnScreen(): RectF? {
@@ -213,6 +255,83 @@ class ZoomableImageView @JvmOverloads constructor(
     private fun getMatrixScale(): Float {
         suppMatrix.getValues(matrixValues)
         return matrixValues[Matrix.MSCALE_X].coerceAtLeast(MIN_SCALE)
+    }
+
+    /** 原始缩放值（不 coerce），供橡皮筋越界判定与松手回弹读取真实倍数 */
+    private fun rawMatrixScale(): Float {
+        suppMatrix.getValues(matrixValues)
+        return matrixValues[Matrix.MSCALE_X]
+    }
+
+    private fun cancelFling() {
+        flingRunnable?.cancel()
+        flingRunnable = null
+    }
+
+    private fun startFling(velocityX: Float, velocityY: Float) {
+        cancelFling()
+        val runnable = FlingRunnable(context).also { it.fling(velocityX.toInt(), velocityY.toInt()) }
+        flingRunnable = runnable
+        postOnAnimation(runnable)
+    }
+
+    /**
+     * 平移惯性：OverScroller 驱动的减速滑动。
+     * 每帧按滚动增量 postTranslate，再走 checkAndDisplayMatrix() 收回边界，图片不会滑出可视范围。
+     * 起点取 -rect.left/top、速度取负，确保滚动方向与边界与 checkAndDisplayMatrix 的约束一致。
+     */
+    private inner class FlingRunnable(context: Context) : Runnable {
+        private val scroller = OverScroller(context)
+        private var currentX = 0
+        private var currentY = 0
+
+        fun fling(velocityX: Int, velocityY: Int) {
+            val rect = getDisplayRect() ?: return
+            val startX = (-rect.left).roundToInt()
+            val minX: Int
+            val maxX: Int
+            if (viewWidth < rect.width()) {
+                minX = 0
+                maxX = (rect.width() - viewWidth).roundToInt()
+            } else {
+                minX = startX
+                maxX = startX
+            }
+            val startY = (-rect.top).roundToInt()
+            val minY: Int
+            val maxY: Int
+            if (viewHeight < rect.height()) {
+                minY = 0
+                maxY = (rect.height() - viewHeight).roundToInt()
+            } else {
+                minY = startY
+                maxY = startY
+            }
+            currentX = startX
+            currentY = startY
+            // 起止一致（无可滚动余量）时无需惯性
+            if (startX != maxX || startY != maxY) {
+                scroller.fling(startX, startY, -velocityX, -velocityY, minX, maxX, minY, maxY, 0, 0)
+            }
+        }
+
+        fun cancel() {
+            scroller.forceFinished(true)
+            removeCallbacks(this)
+        }
+
+        override fun run() {
+            if (scroller.isFinished) return
+            if (scroller.computeScrollOffset()) {
+                val newX = scroller.currX
+                val newY = scroller.currY
+                suppMatrix.postTranslate((currentX - newX).toFloat(), (currentY - newY).toFloat())
+                checkAndDisplayMatrix()
+                currentX = newX
+                currentY = newY
+                postOnAnimation(this)
+            }
+        }
     }
 
     companion object {
