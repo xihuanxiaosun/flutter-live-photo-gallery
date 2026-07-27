@@ -5,6 +5,19 @@
 `cleanupTempFiles` / `onDownloadResult` / `onDownloadProgress` /
 `onMaxCountReached` 的用法与 1.0.0 一致，调用方无需改动代码。
 
+### 新增
+
+**`PickerConfig.autoPlayVideo`（默认 `false`，向后兼容）**
+- 传 `true` 时，`previewAssets` 进入视频页会自动播放当前页视频（仅当前页；相邻页/相册 Live Photo 不会自动播）
+- 默认 `false`，不传或旧调用行为完全不变
+
+**预览页 UX 增强（微博式图文混排，纯原生，不改契约）**
+- 飞入 hero：从被点缩略图放大飞入，与下拉飞回对称；翻页后关闭改为干净淡出（不飞回过期格子）
+- 加载淡入：iOS `.opportunistic` / Android 低清缩略 + 交叉淡入，消除「空白闪一下」
+- 底部页码圆点（2–8 张，随页高亮；>8 张与视频页隐藏），双端一致
+- 手势：iOS 双击放大到点击点；Android 下滑 fling 关闭、缩放橡皮筋回弹、平移惯性
+- Android 修复：初始页即视频时也能自动播放；翻走上一个视频立即暂停
+
 ### 变更
 
 **跨端契约改由 Pigeon 生成**
