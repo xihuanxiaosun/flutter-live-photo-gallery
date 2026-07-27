@@ -27,6 +27,7 @@ import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -41,8 +42,12 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.bumptech.glide.Glide
+import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions
+import com.bumptech.glide.request.RequestListener
+import com.bumptech.glide.request.target.Target
 import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -385,6 +390,11 @@ class PreviewActivity : AppCompatActivity() {
         // 纯预览模式：隐藏底部栏和选择按钮
         bottomBar.visibility = if (showRadio) View.VISIBLE else View.GONE
         btnSelect.visibility = if (showRadio) View.VISIBLE else View.GONE
+
+        // 视频播放失败：把错误路由到出错时承载播放的 holder，复用同一「点按重试」遮罩
+        videoController.onError = { surface ->
+            (surface as? PreviewViewHolder)?.showVideoError()
+        }
 
         viewPager.adapter = PreviewPagerAdapter()
         viewPager.setCurrentItem(initialIndex, false)
@@ -1309,9 +1319,71 @@ class PreviewActivity : AppCompatActivity() {
                 setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
             }
 
+            // 图片/封面帧加载 spinner：居中，默认隐藏（由 loadThumb 控制显隐）
+            val loadingSpinner = ProgressBar(parent.context).apply {
+                val sizePx = parent.context.resources
+                    .getDimensionPixelSize(R.dimen.preview_loading_spinner_size)
+                layoutParams = FrameLayout.LayoutParams(sizePx, sizePx).also {
+                    it.gravity = Gravity.CENTER
+                }
+                isIndeterminate = true
+                indeterminateTintList = ColorStateList.valueOf(
+                    ContextCompat.getColor(parent.context, R.color.preview_retry_foreground)
+                )
+                visibility = View.GONE
+            }
+
+            // 加载失败重试遮罩：破损图标 + 「点按重试」文案，居中、默认隐藏、可点击
+            val retryOverlay = buildRetryOverlay(parent.context)
+
+            // z 序：封面/图 → spinner → 播放按钮 → 重试遮罩（遮罩置顶，覆盖失败态的空白区）
             container.addView(zoomView)
+            container.addView(loadingSpinner)
             container.addView(playBtn)
-            return PreviewViewHolder(container, zoomView, playBtn)
+            container.addView(retryOverlay)
+            return PreviewViewHolder(container, zoomView, playBtn, loadingSpinner, retryOverlay)
+        }
+
+        /** 构建「点按重试」遮罩：垂直排列的破损图标 + 文案，半透明圆角底，默认 GONE。 */
+        private fun buildRetryOverlay(context: android.content.Context): LinearLayout {
+            val res = context.resources
+            return LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                ).also { it.gravity = Gravity.CENTER }
+                background = ContextCompat.getDrawable(context, R.drawable.bg_preview_retry_overlay)
+                val padH = res.getDimensionPixelSize(R.dimen.preview_retry_padding_h)
+                val padV = res.getDimensionPixelSize(R.dimen.preview_retry_padding_v)
+                setPadding(padH, padV, padH, padV)
+                isClickable = true
+                isFocusable = true
+                visibility = View.GONE
+                contentDescription = context.getString(R.string.preview_load_failed)
+
+                val iconSize = res.getDimensionPixelSize(R.dimen.preview_retry_icon_size)
+                addView(ImageView(context).apply {
+                    layoutParams = LinearLayout.LayoutParams(iconSize, iconSize)
+                    setImageDrawable(ContextCompat.getDrawable(context, R.drawable.ic_broken_image))
+                    imageTintList = ColorStateList.valueOf(
+                        ContextCompat.getColor(context, R.color.preview_retry_foreground)
+                    )
+                })
+                addView(TextView(context).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                    ).also { it.topMargin = res.getDimensionPixelSize(R.dimen.preview_retry_spacing) }
+                    text = context.getString(R.string.preview_retry)
+                    setTextColor(ContextCompat.getColor(context, R.color.preview_retry_foreground))
+                    setTextSize(
+                        TypedValue.COMPLEX_UNIT_PX,
+                        res.getDimension(R.dimen.preview_retry_text_size),
+                    )
+                })
+            }
         }
 
         override fun onBindViewHolder(holder: PreviewViewHolder, position: Int) {
@@ -1323,6 +1395,8 @@ class PreviewActivity : AppCompatActivity() {
             super.onViewRecycled(holder)
             Glide.with(holder.zoomView.context).clear(holder.zoomView)
             holder.zoomView.resetTransform()
+            // 复位 spinner / 重试遮罩，避免复用 holder 残留旧的加载中或失败态
+            holder.resetRobustnessState()
             // 若此 holder 正在承载 PlayerView，撤离并暂停
             videoController.onSurfaceRecycled(holder)
         }
@@ -1331,10 +1405,14 @@ class PreviewActivity : AppCompatActivity() {
     inner class PreviewViewHolder(
         itemView: View,
         val zoomView: ZoomableImageView,
-        private val playBtn: ImageView
+        private val playBtn: ImageView,
+        private val loadingSpinner: ProgressBar,
+        private val retryOverlay: View,
     ) : RecyclerView.ViewHolder(itemView), VideoSurface {
 
         private var currentPlayUri: Uri? = null
+        /** 当前图片/封面帧的 Glide load 目标，抽出以便「点按重试」重跑同一请求。 */
+        private var currentThumbTarget: Any? = null
         private val container get() = itemView as FrameLayout
 
         fun bind(asset: Map<String, Any?>) {
@@ -1345,8 +1423,11 @@ class PreviewActivity : AppCompatActivity() {
             val mediaType = (asset["mediaType"] as? String) ?: "image"
             val isVideo   = mediaType == "video"
 
+            // 每次 bind 先复位健壮性 UI，避免复用 holder 残留旧的加载中/失败态
+            resetRobustnessState()
+
             // 图片缩略图加载（视频也加载封面帧）
-            val thumbTarget: Any? = when {
+            currentThumbTarget = when {
                 !editedPath.isNullOrBlank() -> File(editedPath)
                 url != null && !isVideo -> url
                 isVideo && videoUrl != null -> videoUrl
@@ -1354,18 +1435,7 @@ class PreviewActivity : AppCompatActivity() {
                 assetId != null -> Uri.parse(assetId)
                 else -> null
             }
-            if (thumbTarget != null) {
-                // 占位色 + 低分辨率缩略 + 短交叉淡入，消除“空白→图”的突兀闪烁。
-                // 占位色 ColorDrawable 会被 isDecodedImage() 视为“未就绪”，故进场 hero 动画
-                // 仍会等真图解码后再飞入，不会误用占位色块（见 resolveCurrentMediaRectOnScreen）。
-                Glide.with(zoomView.context)
-                    .load(thumbTarget)
-                    .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
-                    .placeholder(ColorDrawable(ContextCompat.getColor(zoomView.context, R.color.preview_placeholder)))
-                    .thumbnail(0.15f)
-                    .transition(DrawableTransitionOptions.withCrossFade(180))
-                    .into(zoomView)
-            }
+            loadThumb()
 
             playBtn.visibility = if (isVideo) View.VISIBLE else View.GONE
 
@@ -1391,6 +1461,98 @@ class PreviewActivity : AppCompatActivity() {
             }
         }
 
+        /**
+         * 加载 [currentThumbTarget]（图片主图 / 视频封面帧）。抽成独立方法以便「点按重试」
+         * 重跑同一请求。请求开始即显示 spinner；成功隐藏 spinner 与遮罩；失败隐藏 spinner
+         * 并弹出重试遮罩。保留占位色/缩略/交叉淡入不变，不影响 isDecodedImage 进场门控。
+         */
+        fun loadThumb() {
+            val target = currentThumbTarget ?: return
+            // 请求开始：显示 spinner，隐藏重试遮罩
+            retryOverlay.visibility = View.GONE
+            loadingSpinner.visibility = View.VISIBLE
+            // 占位色 + 低分辨率缩略 + 短交叉淡入，消除“空白→图”的突兀闪烁。
+            // 占位色 ColorDrawable 会被 isDecodedImage() 视为“未就绪”，故进场 hero 动画
+            // 仍会等真图解码后再飞入，不会误用占位色块（见 resolveCurrentMediaRectOnScreen）。
+            Glide.with(zoomView.context)
+                .load(target)
+                .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
+                .placeholder(ColorDrawable(ContextCompat.getColor(zoomView.context, R.color.preview_placeholder)))
+                .thumbnail(0.15f)
+                .transition(DrawableTransitionOptions.withCrossFade(180))
+                .listener(object : RequestListener<Drawable> {
+                    override fun onLoadFailed(
+                        e: GlideException?,
+                        model: Any?,
+                        target: Target<Drawable>,
+                        isFirstResource: Boolean,
+                    ): Boolean {
+                        // 加载失败：隐藏 spinner，弹出重试遮罩（点按重跑同一请求）
+                        loadingSpinner.visibility = View.GONE
+                        showImageRetry()
+                        return false  // 交回 Glide 默认处理，保留占位色（isDecodedImage 门控依赖它）
+                    }
+
+                    override fun onResourceReady(
+                        resource: Drawable,
+                        model: Any,
+                        target: Target<Drawable>?,
+                        dataSource: DataSource,
+                        isFirstResource: Boolean,
+                    ): Boolean {
+                        // 加载成功：隐藏 spinner 与重试遮罩
+                        loadingSpinner.visibility = View.GONE
+                        retryOverlay.visibility = View.GONE
+                        return false  // 交回 Glide 把图设入 zoomView（保留 crossfade）
+                    }
+                })
+                .into(zoomView)
+        }
+
+        /** 图片加载失败：显示「点按重试」遮罩，点按重跑 loadThumb()。 */
+        private fun showImageRetry() {
+            retryOverlay.setOnClickListener {
+                retryOverlay.visibility = View.GONE
+                loadThumb()
+            }
+            retryOverlay.visibility = View.VISIBLE
+            retryOverlay.bringToFront()
+        }
+
+        /**
+         * 视频播放失败：由 VideoPlaybackController.onError 经 Activity 路由至此。
+         * 撤离播放失败的空白 PlayerView 露出封面帧，隐藏播放按钮，显示同一重试遮罩；
+         * 点按重跑 videoController.play(this, currentPlayUri)。
+         */
+        fun showVideoError() {
+            removePlayerViews()
+            playBtn.visibility = View.GONE
+            loadingSpinner.visibility = View.GONE
+            retryOverlay.setOnClickListener {
+                val uri = currentPlayUri ?: return@setOnClickListener
+                retryOverlay.visibility = View.GONE
+                videoController.play(this, uri)
+            }
+            retryOverlay.visibility = View.VISIBLE
+            retryOverlay.bringToFront()
+        }
+
+        /** 复位 spinner / 重试遮罩（bind 与 recycle 时调用），避免复用残留旧状态。 */
+        fun resetRobustnessState() {
+            loadingSpinner.visibility = View.GONE
+            retryOverlay.visibility = View.GONE
+            retryOverlay.setOnClickListener(null)
+        }
+
+        /** 移除容器内所有 PlayerView（不改动播放按钮显隐）。 */
+        private fun removePlayerViews() {
+            for (i in container.childCount - 1 downTo 0) {
+                if (container.getChildAt(i) is androidx.media3.ui.PlayerView) {
+                    container.removeViewAt(i)
+                }
+            }
+        }
+
         /** autoPlayVideo 场景下由 Activity 调用，触发内联 ExoPlayer */
         fun invokePlay() {
             currentPlayUri?.let { uri ->
@@ -1413,11 +1575,7 @@ class PreviewActivity : AppCompatActivity() {
          * 移除后封面帧重新可见，播放按钮恢复显示。
          */
         override fun releasePlayerView() {
-            for (i in container.childCount - 1 downTo 0) {
-                if (container.getChildAt(i) is androidx.media3.ui.PlayerView) {
-                    container.removeViewAt(i)
-                }
-            }
+            removePlayerViews()
             if (currentPlayUri != null) {
                 playBtn.visibility = View.VISIBLE
             }

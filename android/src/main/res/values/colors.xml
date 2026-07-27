@@ -11,5 +11,8 @@
     <!-- 预览底部页码指示器圆点：当前=白，其余=白@35% -->
     <color name="preview_dot_active">#FFFFFFFF</color>
     <color name="preview_dot_inactive">#59FFFFFF</color>
+    <!-- 预览健壮性 UI：加载 spinner + 加载失败重试遮罩（预览恒为暗底，无需夜间覆盖） -->
+    <color name="preview_retry_overlay_bg">#B3000000</color>
+    <color name="preview_retry_foreground">#FFECECEC</color>
     <!-- 夜间模式覆盖在 values-night/colors.xml -->
 </resources>

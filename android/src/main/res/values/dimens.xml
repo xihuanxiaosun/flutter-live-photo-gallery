@@ -10,4 +10,15 @@
     <dimen name="preview_page_indicator_margin_bottom">16dp</dimen>
     <dimen name="preview_page_indicator_dot_size">6dp</dimen>
     <dimen name="preview_page_indicator_dot_gap">6dp</dimen>
+
+    <!-- 预览健壮性 UI（代码里以编程方式添加到 item 容器，尺寸从这里取，避免魔法数字） -->
+    <!-- 图片/封面帧加载 spinner 尺寸 -->
+    <dimen name="preview_loading_spinner_size">48dp</dimen>
+    <!-- 加载失败重试遮罩：破损图标尺寸、内边距、圆角、图标与文字间距、文字大小 -->
+    <dimen name="preview_retry_icon_size">44dp</dimen>
+    <dimen name="preview_retry_padding_h">20dp</dimen>
+    <dimen name="preview_retry_padding_v">16dp</dimen>
+    <dimen name="preview_retry_corner_radius">12dp</dimen>
+    <dimen name="preview_retry_spacing">8dp</dimen>
+    <dimen name="preview_retry_text_size">14sp</dimen>
 </resources>

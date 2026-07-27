@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 预览页健壮性 UI（加载失败/重试遮罩），避免硬编码用户可见文案 -->
+    <string name="preview_retry">点按重试</string>
+    <string name="preview_load_failed">加载失败</string>
+    <string name="preview_loading">加载中</string>
+</resources>
