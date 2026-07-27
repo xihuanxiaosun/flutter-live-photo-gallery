@@ -98,7 +98,16 @@ class SinglePhotoViewController: UIViewController {
         indicator.hidesWhenStopped = true
         return indicator
     }()
-    
+
+    /// 图片加载失败时的错误浮层（懒加载）：居中的警示图标 +「加载失败，点按重试」文案，
+    /// 半透明深色圆角背景，整块可点。仅在真正失败时才创建并加入视图层级，
+    /// 成功的纯图片页永不实例化；点按即重跑 imageRetryAction 记录的加载动作。
+    private var imageErrorOverlay: UIControl?
+
+    /// 错误浮层「点按重试」要重跑的加载动作：网络图失败重跑 loadNetworkImage，
+    /// 本地文件失败重跑 loadImage()。展示浮层时按来源写入，点按时执行。
+    private var imageRetryAction: (() -> Void)?
+
     init(asset: PhotoAssetModel, config: PickerConfig, isSelected: Bool) {
         self.asset = asset
         self.config = config
@@ -134,6 +143,8 @@ class SinglePhotoViewController: UIViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         stopVideo()
+        // 复位错误浮层，避免复用的页面翻回时残留上一轮的加载失败态
+        hideImageErrorOverlay()
         // 取消未完成的 PHImageManager 请求，快速翻页时避免回调乱序和内存积压
         if let id = imageRequestID {
             PHImageManager.default().cancelImageRequest(id)
@@ -202,6 +213,8 @@ class SinglePhotoViewController: UIViewController {
     func loadImage() {
         // 显示加载指示器
         loadingIndicator.startAnimating()
+        // 一次新的加载开始：清掉上一轮可能残留的错误浮层
+        hideImageErrorOverlay()
 
         switch asset.sourceType {
         case .photoLibrary(let phAsset):
@@ -303,6 +316,8 @@ class SinglePhotoViewController: UIViewController {
     /// 之后的（opportunistic 升清）赋值直接替换，避免每次升清都闪一下。
     private func setImageCrossfadingIfFirst(_ image: UIImage?) {
         guard let image = image else { return }
+        // 成功拿到图片（含降质首帧）：移除可能残留的错误浮层
+        hideImageErrorOverlay()
         guard !hasDisplayedImage else {
             imageView.image = image
             return
@@ -320,12 +335,17 @@ class SinglePhotoViewController: UIViewController {
     private func loadNetworkImage(_ url: URL, mediaType: PhotoAssetModel.MediaType) {
         // 三种 mediaType 的网络封面加载逻辑相同：拉取封面图展示。
         // （视频/实况的播放另走 videoUrl，与此处封面加载无关。）
-        _ = mediaType
         PhotoLibraryManager.shared.loadNetworkImage(from: url) { [weak self] result in
             DispatchQueue.main.async {
-                self?.loadingIndicator.stopAnimating()
+                guard let self = self else { return }
+                self.loadingIndicator.stopAnimating()
                 if case .success(let image) = result {
-                    self?.setImageCrossfadingIfFirst(image)
+                    self.setImageCrossfadingIfFirst(image)
+                } else {
+                    // 网络封面加载失败：展示错误浮层，点按重试重跑本次网络加载
+                    self.showImageErrorOverlay { [weak self] in
+                        self?.loadNetworkImage(url, mediaType: mediaType)
+                    }
                 }
             }
         }
@@ -336,8 +356,13 @@ class SinglePhotoViewController: UIViewController {
         case .image, .livePhoto:
             if let image = UIImage(contentsOfFile: url.path) {
                 setImageCrossfadingIfFirst(image)
+                loadingIndicator.stopAnimating()
+            } else {
+                // 本地文件读取失败（文件缺失/损坏）：展示错误浮层，点按重试重跑 loadImage()
+                showImageErrorOverlay { [weak self] in
+                    self?.loadImage()
+                }
             }
-            loadingIndicator.stopAnimating()
         case .video:
             let asset = AVURLAsset(url: url)
             let imageGenerator = AVAssetImageGenerator(asset: asset)
@@ -354,7 +379,79 @@ class SinglePhotoViewController: UIViewController {
             }
         }
     }
-    
+
+    // MARK: - 图片加载失败浮层
+
+    /// 展示错误浮层并停转圈；retry 为点按重试时要重跑的加载动作（按来源不同）。
+    private func showImageErrorOverlay(retry: @escaping () -> Void) {
+        imageRetryAction = retry
+        loadingIndicator.stopAnimating()
+        let overlay = imageErrorOverlay ?? makeImageErrorOverlay()
+        overlay.isHidden = false
+        view.bringSubviewToFront(overlay)
+    }
+
+    /// 隐藏错误浮层；未创建过则直接返回，避免为了隐藏而懒加载实例化。
+    private func hideImageErrorOverlay() {
+        imageErrorOverlay?.isHidden = true
+    }
+
+    private func makeImageErrorOverlay() -> UIControl {
+        // 整块浮层用 UIControl：点按（.touchUpInside）即重试。同时它命中父级 pan/单击手势的
+        // 「落在 UIControl 上就让行」判断（gestureRecognizer(_:shouldReceive:)），因此卡片区域内
+        // 不会误触发下拉关闭 / bar 显隐，正好把点按留给重试；隐藏时 isHidden 使其不参与命中测试，
+        // 不影响下拉关闭与双击。
+        let overlay = UIControl()
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        overlay.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+        overlay.layer.cornerRadius = 12
+        overlay.isHidden = true
+
+        let icon = UIImageView(image: UIImage(
+            systemName: "exclamationmark.triangle",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 34, weight: .regular)
+        ))
+        icon.tintColor = .white
+        icon.contentMode = .scaleAspectFit
+        icon.translatesAutoresizingMaskIntoConstraints = false
+
+        let label = UILabel()
+        label.text = "加载失败，点按重试"
+        label.textColor = .white
+        label.font = .systemFont(ofSize: 14, weight: .medium)
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        let stack = UIStackView(arrangedSubviews: [icon, label])
+        stack.axis = .vertical
+        stack.spacing = 10
+        stack.alignment = .center
+        stack.isUserInteractionEnabled = false  // 让点按落到 overlay 自身
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(stack)
+
+        view.addSubview(overlay)
+        NSLayoutConstraint.activate([
+            overlay.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            overlay.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            stack.topAnchor.constraint(equalTo: overlay.topAnchor, constant: 20),
+            stack.bottomAnchor.constraint(equalTo: overlay.bottomAnchor, constant: -20),
+            stack.leadingAnchor.constraint(equalTo: overlay.leadingAnchor, constant: 24),
+            stack.trailingAnchor.constraint(equalTo: overlay.trailingAnchor, constant: -24),
+        ])
+
+        overlay.addAction(UIAction { [weak self] _ in
+            guard let self = self else { return }
+            // 点按重试：先隐藏浮层并重新转圈，再重跑对应来源的加载动作
+            self.hideImageErrorOverlay()
+            self.loadingIndicator.startAnimating()
+            self.imageRetryAction?()
+        }, for: .touchUpInside)
+
+        imageErrorOverlay = overlay
+        return overlay
+    }
+
     // MARK: - Video Loading & Playback
 
     private func loadVideo() {
