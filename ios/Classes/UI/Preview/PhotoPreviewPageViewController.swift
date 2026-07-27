@@ -41,7 +41,7 @@ class SinglePhotoViewController: UIViewController {
             scrollView: self.scrollView,
             imageView: self.imageView,
             playButton: self.playButton,
-            progressBar: self.progressBar,
+            controlsView: self.videoControlsView,
             loadingIndicator: self.loadingIndicator
         )
     }()
@@ -79,12 +79,12 @@ class SinglePhotoViewController: UIViewController {
         return button
     }()
 
-    private let progressBar: UIProgressView = {
-        let progress = UIProgressView(progressViewStyle: .default)
-        progress.progressTintColor = .white
-        progress.trackTintColor = UIColor.white.withAlphaComponent(0.3)
-        progress.isHidden = true
-        return progress
+    /// 视频底部控制条（播放/暂停 + 时间 + 可拖动进度）。
+    /// 由页面创建并注入 videoPlayerController；纯图片页始终隐藏，不产生播放器。
+    private let videoControlsView: PreviewVideoControlsView = {
+        let controls = PreviewVideoControlsView()
+        controls.isHidden = true
+        return controls
     }()
 
     // 加载指示器
@@ -165,14 +165,18 @@ class SinglePhotoViewController: UIViewController {
         ])
         playButton.addTarget(self, action: #selector(playButtonTapped), for: .touchUpInside)
 
-        // 添加进度条
-        view.addSubview(progressBar)
-        progressBar.translatesAutoresizingMaskIntoConstraints = false
+        // 添加视频控制条：贴底部安全区。选择模式下父级底栏（原图/裁剪/完成）会盖在
+        // pageViewController 之上，故此处把控制条抬到父级底栏上方（54pt 内容高 + 间距），
+        // 避免滑块被遮住无法拖动；纯预览模式没有父级底栏，则贴近底部即可。
+        view.addSubview(videoControlsView)
+        videoControlsView.translatesAutoresizingMaskIntoConstraints = false
+        let controlsBottomInset: CGFloat = config.showRadio ? 62 : 12
         NSLayoutConstraint.activate([
-            progressBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            progressBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-            progressBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
-            progressBar.heightAnchor.constraint(equalToConstant: 2)
+            videoControlsView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            videoControlsView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            videoControlsView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+                                                      constant: -controlsBottomInset),
+            videoControlsView.heightAnchor.constraint(equalToConstant: 44)
         ])
 
         // 添加加载指示器
@@ -216,8 +220,13 @@ class SinglePhotoViewController: UIViewController {
 
     func applyEditedImage(_ image: UIImage, animated: Bool = true) {
         loadingIndicator.stopAnimating()
+
+        // 裁剪后新图长宽比可能与原图不同：先复位缩放并让 imageView 重新铺满可视区，
+        // 对齐首次加载的布局（imageView.frame == scrollView.bounds + scaleAspectFit 居中），
+        // 否则新图会被 letterbox 在旧的 frame 里。
         scrollView.setZoomScale(scrollView.minimumZoomScale, animated: false)
         scrollView.contentOffset = .zero
+        imageView.frame = scrollView.bounds
 
         let updates = {
             self.imageView.image = image
@@ -1262,7 +1271,10 @@ extension PhotoPreviewPageViewController: PreviewCropHost {
     }
 
     func applyCroppedImage(_ image: UIImage) {
-        currentPhotoVC?.applyEditedImage(image, animated: false)
+        // 以「当前真正可见的那一页」为准，而不是缓存的 currentPhotoVC——
+        // 裁剪期间自定义转场可能已让缓存指向陈旧/错误的页，导致裁剪结果贴不到眼前这张。
+        let visibleVC = pageViewController.viewControllers?.first as? SinglePhotoViewController
+        (visibleVC ?? currentPhotoVC)?.applyEditedImage(image, animated: false)
     }
 
     func showCropToast(_ text: String) {
@@ -1338,6 +1350,22 @@ extension PhotoPreviewPageViewController: UIGestureRecognizerDelegate {
         if gestureRecognizer == panGesture {
             guard let currentPhotoVC = currentPhotoVC else { return false }
             return currentPhotoVC.scrollView.zoomScale == 1.0
+        }
+        return true
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldReceive touch: UITouch
+    ) -> Bool {
+        // 落在控件（视频控制条的滑块 / 播放键等）上的触摸，交给控件自身处理：
+        // 下拉关闭 pan 会 cancelsTouchesInView 抢走滑块拖动，单击切换 bar 也会与点击冲突。
+        if gestureRecognizer == panGesture || gestureRecognizer == barToggleTap {
+            var candidate = touch.view
+            while let current = candidate {
+                if current is UIControl { return false }
+                candidate = current.superview
+            }
         }
         return true
     }

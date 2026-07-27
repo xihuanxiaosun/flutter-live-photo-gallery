@@ -15,8 +15,8 @@ import AVFoundation
 /// playVideoDirectly(url:generation:) 三个入口暴露；页面不再直接读写这两个状态，
 /// 因此新增一条中止分支时不可能忘记复位。
 ///
-/// 本类不创建任何视图：播放按钮、进度条、加载指示器与图片视图都由页面创建并注入，
-/// 本类只负责在播放状态变化时更新它们。
+/// 本类不创建任何视图：播放按钮、底部控制条、加载指示器与图片视图都由页面创建并注入，
+/// 本类只负责在播放状态变化时更新它们，并接收控制条的播放/暂停/拖动回调执行 seek。
 final class PreviewVideoPlayerController {
 
     // MARK: - 注入的视图
@@ -31,7 +31,7 @@ final class PreviewVideoPlayerController {
     private let imageView: UIImageView
 
     private let playButton: UIButton
-    private let progressBar: UIProgressView
+    private let controlsView: PreviewVideoControlsView
     private let loadingIndicator: UIActivityIndicatorView
 
     // MARK: - 播放器状态
@@ -59,15 +59,19 @@ final class PreviewVideoPlayerController {
         scrollView: UIScrollView,
         imageView: UIImageView,
         playButton: UIButton,
-        progressBar: UIProgressView,
+        controlsView: PreviewVideoControlsView,
         loadingIndicator: UIActivityIndicatorView
     ) {
         self.hostView = hostView
         self.scrollView = scrollView
         self.imageView = imageView
         self.playButton = playButton
-        self.progressBar = progressBar
+        self.controlsView = controlsView
         self.loadingIndicator = loadingIndicator
+
+        // 控制条只把交互回传给本类，由本类执行播放/暂停与 seek。
+        controlsView.onPlayPauseTapped = { [weak self] in self?.togglePlayPause() }
+        controlsView.onScrubEnded = { [weak self] fraction in self?.seek(toFraction: fraction) }
     }
 
     // MARK: - 播放器装配
@@ -95,9 +99,11 @@ final class PreviewVideoPlayerController {
     func setupVideoPlayer(with url: URL) {
         let player = makePlayer(url: url)
 
-        // ⚠️ 先隐藏播放按钮，等视频准备好再显示
+        // ⚠️ 先隐藏播放按钮与控制条，等视频准备好再显示
         playButton.isHidden = true
         playButton.alpha = 1.0  // 重置 alpha，防止上次播放时被隐藏后残留
+        controlsView.isHidden = true
+        controlsView.reset()
         loadingIndicator.startAnimating()
 
         // 监听视频状态（类型安全 KVO，自动绑定到此 playerItem 实例）
@@ -109,9 +115,13 @@ final class PreviewVideoPlayerController {
                     self.loadingIndicator.stopAnimating()
                     self.playButton.isHidden = false
                     self.updatePlayButton(isPlaying: false)
+                    // 就绪即显示控制条，让用户立刻看到总时长并可拖动
+                    self.controlsView.isHidden = false
+                    self.controlsView.setProgress(current: 0, duration: CMTimeGetSeconds(item.duration))
                 case .failed:
                     self.loadingIndicator.stopAnimating()
                     self.playButton.isHidden = true
+                    self.controlsView.isHidden = true
                 default:
                     break
                 }
@@ -209,13 +219,31 @@ final class PreviewVideoPlayerController {
             player.play()
             isPlaying = true
             updatePlayButton(isPlaying: true)
-            progressBar.isHidden = false
+            controlsView.isHidden = false
 
             // 隐藏图片显示视频
             UIView.animate(withDuration: 0.3) {
                 self.imageView.alpha = 0
             }
 
+        }
+    }
+
+    /// 把 0~1 的进度换算成时间并 seek。总时长未知时忽略。
+    private func seek(toFraction fraction: Float) {
+        guard let player = videoPlayer,
+              let duration = player.currentItem?.duration,
+              duration.isNumeric else {
+            // 无法 seek 时也要恢复进度更新，否则滑块会卡在「拖动中」状态
+            controlsView.endScrubbing()
+            return
+        }
+        let seconds = Double(fraction) * CMTimeGetSeconds(duration)
+        player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600),
+                    toleranceBefore: .zero,
+                    toleranceAfter: .zero) { [weak self] _ in
+            // seek 完成回调线程不固定，切回主线程再恢复周期性进度更新
+            DispatchQueue.main.async { self?.controlsView.endScrubbing() }
         }
     }
 
@@ -226,28 +254,29 @@ final class PreviewVideoPlayerController {
         playButton.setImage(image, for: .normal)
         playButton.tintColor = .white
 
-        // 播放时隐藏按钮
+        // 控制条上的小播放/暂停键与中央大按钮同步图标
+        controlsView.setPlaying(isPlaying)
+
+        // 播放时隐藏中央大按钮（控制条上的小键仍可用于暂停）
         UIView.animate(withDuration: 0.3) {
             self.playButton.alpha = isPlaying ? 0 : 1
         }
     }
 
     private func updateProgress(time: CMTime) {
-        guard let duration = videoPlayer?.currentItem?.duration else { return }
-        let durationSeconds = CMTimeGetSeconds(duration)
-        let currentSeconds = CMTimeGetSeconds(time)
-
-        if durationSeconds > 0 {
-            progressBar.progress = Float(currentSeconds / durationSeconds)
-        }
+        guard let item = videoPlayer?.currentItem else { return }
+        // duration 早期可能为 NaN/未知，交由 controlsView.setProgress 兜底处理
+        controlsView.setProgress(current: CMTimeGetSeconds(time),
+                                 duration: CMTimeGetSeconds(item.duration))
     }
 
     private func videoPlaybackEnded() {
         isPlaying = false
         updatePlayButton(isPlaying: false)
 
-        // 重置播放位置
+        // 重置播放位置并把控制条回到起点
         videoPlayer?.seek(to: .zero)
+        controlsView.setProgress(current: 0, duration: CMTimeGetSeconds(videoPlayer?.currentItem?.duration ?? .indefinite))
 
         // 显示图片
         UIView.animate(withDuration: 0.3) {
@@ -279,7 +308,8 @@ final class PreviewVideoPlayerController {
 
         // 重置播放按钮状态（包含 alpha，防止播放时隐藏后残留）
         playButton.alpha = 1.0
-        progressBar.isHidden = true
+        controlsView.isHidden = true
+        controlsView.reset()
 
         UIView.animate(withDuration: UIConstants.Animation.fadeInOutDuration, animations: {
             self.imageView.alpha = 1.0
