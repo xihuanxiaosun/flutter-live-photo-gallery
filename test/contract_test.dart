@@ -22,6 +22,7 @@ void main() {
         'enableVideo': true,
         'enableLivePhoto': true,
         'showRadio': true,
+        'autoPlayVideo': false,
         'maxVideoCount': -1,
         'videoMaxDuration': 0.0,
         'filterConfig': 'all',

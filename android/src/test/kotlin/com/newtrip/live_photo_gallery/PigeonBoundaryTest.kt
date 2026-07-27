@@ -140,6 +140,7 @@ class PigeonBoundaryTest {
         enableVideo: Boolean = true,
         enableLivePhoto: Boolean = true,
         showRadio: Boolean = true,
+        autoPlayVideo: Boolean = false,
         maxVideoCount: Long = -1,
         videoMaxDuration: Double = 0.0,
         filterConfig: PgMediaFilter = PgMediaFilter.ALL,
@@ -150,6 +151,7 @@ class PigeonBoundaryTest {
         enableVideo = enableVideo,
         enableLivePhoto = enableLivePhoto,
         showRadio = showRadio,
+        autoPlayVideo = autoPlayVideo,
         maxVideoCount = maxVideoCount,
         videoMaxDuration = videoMaxDuration,
         filterConfig = filterConfig,
@@ -234,12 +236,15 @@ class PigeonBoundaryTest {
     }
 
     @Test
-    fun `toPickerConfig - cropConfig 不参与 PickerConfig 且 autoPlayVideo 保持默认`() {
-        // cropConfig 由预览页单独消费，不进 PickerConfig；autoPlayVideo 无对应契约字段
+    fun `toPickerConfig - cropConfig 不参与 PickerConfig；autoPlayVideo 逐值过桥`() {
+        // cropConfig 由预览页单独消费，不进 PickerConfig
         val config = pgConfig(
             cropConfig = PgCropConfig(aspectRatioX = 16.0, aspectRatioY = 9.0)
         ).toPickerConfig()
         assertEquals(false, config.autoPlayVideo)
+
+        // autoPlayVideo 现已进入跨端契约，true 必须映射到 PickerConfig.autoPlayVideo
+        assertEquals(true, pgConfig(autoPlayVideo = true).toPickerConfig().autoPlayVideo)
     }
 
     @Test

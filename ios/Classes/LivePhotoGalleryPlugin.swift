@@ -247,6 +247,7 @@ public class LivePhotoGalleryPlugin: NSObject, FlutterPlugin, LivePhotoGalleryHo
             "enableVideo":      config.enableVideo,
             "enableLivePhoto":  config.enableLivePhoto,
             "showRadio":        config.showRadio,
+            "autoPlayVideo":    config.autoPlayVideo,
             "maxVideoCount":    Int(config.maxVideoCount),
             "videoMaxDuration": config.videoMaxDuration,
             "filterConfig":     config.filterConfig.wire,

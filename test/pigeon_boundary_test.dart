@@ -103,6 +103,7 @@ void main() {
       expect(pg.enableVideo, isTrue);
       expect(pg.enableLivePhoto, isTrue);
       expect(pg.showRadio, isTrue);
+      expect(pg.autoPlayVideo, isFalse);
       expect(pg.maxVideoCount, -1);
       expect(pg.videoMaxDuration, 0.0);
       expect(pg.filterConfig, PgMediaFilter.all);
@@ -116,6 +117,7 @@ void main() {
         enableVideo: false,
         enableLivePhoto: false,
         showRadio: false,
+        autoPlayVideo: true,
         maxVideoCount: 2,
         videoMaxDuration: 30.5,
         filterConfig: MediaFilter.videoOnly,
@@ -126,6 +128,7 @@ void main() {
       expect(pg.enableVideo, isFalse);
       expect(pg.enableLivePhoto, isFalse);
       expect(pg.showRadio, isFalse);
+      expect(pg.autoPlayVideo, isTrue);
       expect(pg.maxVideoCount, 2);
       expect(pg.videoMaxDuration, 30.5);
       expect(pg.filterConfig, PgMediaFilter.videoOnly);

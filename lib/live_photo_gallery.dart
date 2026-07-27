@@ -270,6 +270,9 @@ class PickerConfig {
   /// 是否显示多选圆圈（`false` = 纯预览模式）
   final bool showRadio;
 
+  /// 视频进入预览页时是否自动播放（默认 false）
+  final bool autoPlayVideo;
+
   /// 最多可选视频 / Live Photo 数量（`-1` = 无限制）。
   /// 超出时 native 侧会触发 [LivePhotoGallery.onMaxCountReached] 并提示用户。
   final int maxVideoCount;
@@ -295,6 +298,7 @@ class PickerConfig {
     this.enableVideo = true,
     this.enableLivePhoto = true,
     this.showRadio = true,
+    this.autoPlayVideo = false,
     this.maxVideoCount = -1,
     this.videoMaxDuration = 0,
     this.filterConfig = MediaFilter.all,
@@ -312,6 +316,7 @@ class PickerConfig {
         'enableVideo': enableVideo,
         'enableLivePhoto': enableLivePhoto,
         'showRadio': showRadio,
+        'autoPlayVideo': autoPlayVideo,
         'maxVideoCount': maxVideoCount,
         'videoMaxDuration': videoMaxDuration,
         'filterConfig': filterConfig._value,
@@ -324,6 +329,7 @@ class PickerConfig {
         enableVideo: enableVideo,
         enableLivePhoto: enableLivePhoto,
         showRadio: showRadio,
+        autoPlayVideo: autoPlayVideo,
         maxVideoCount: maxVideoCount,
         videoMaxDuration: videoMaxDuration,
         filterConfig: filterConfig._pg,

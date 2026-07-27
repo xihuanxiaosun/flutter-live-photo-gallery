@@ -107,6 +107,7 @@ class PgPickerConfig {
     required this.enableVideo,
     required this.enableLivePhoto,
     required this.showRadio,
+    required this.autoPlayVideo,
     required this.maxVideoCount,
     required this.videoMaxDuration,
     required this.filterConfig,
@@ -122,6 +123,9 @@ class PgPickerConfig {
   bool enableLivePhoto;
 
   bool showRadio;
+
+  /// 视频进入预览页时是否自动播放（默认 false）
+  bool autoPlayVideo;
 
   /// -1 = 无限制
   int maxVideoCount;
@@ -140,6 +144,7 @@ class PgPickerConfig {
       enableVideo,
       enableLivePhoto,
       showRadio,
+      autoPlayVideo,
       maxVideoCount,
       videoMaxDuration,
       filterConfig,
@@ -155,10 +160,11 @@ class PgPickerConfig {
       enableVideo: result[2]! as bool,
       enableLivePhoto: result[3]! as bool,
       showRadio: result[4]! as bool,
-      maxVideoCount: result[5]! as int,
-      videoMaxDuration: result[6]! as double,
-      filterConfig: result[7]! as PgMediaFilter,
-      cropConfig: result[8] as PgCropConfig?,
+      autoPlayVideo: result[5]! as bool,
+      maxVideoCount: result[6]! as int,
+      videoMaxDuration: result[7]! as double,
+      filterConfig: result[8]! as PgMediaFilter,
+      cropConfig: result[9] as PgCropConfig?,
     );
   }
 }

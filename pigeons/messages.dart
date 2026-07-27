@@ -76,6 +76,7 @@ class PgPickerConfig {
     required this.enableVideo,
     required this.enableLivePhoto,
     required this.showRadio,
+    required this.autoPlayVideo,
     required this.maxVideoCount,
     required this.videoMaxDuration,
     required this.filterConfig,
@@ -87,6 +88,9 @@ class PgPickerConfig {
   bool enableVideo;
   bool enableLivePhoto;
   bool showRadio;
+
+  /// 视频进入预览页时是否自动播放（默认 false）
+  bool autoPlayVideo;
 
   /// -1 = 无限制
   int maxVideoCount;

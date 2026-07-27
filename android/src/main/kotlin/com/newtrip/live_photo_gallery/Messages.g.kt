@@ -172,6 +172,8 @@ data class PgPickerConfig (
   val enableVideo: Boolean,
   val enableLivePhoto: Boolean,
   val showRadio: Boolean,
+  /** 视频进入预览页时是否自动播放（默认 false） */
+  val autoPlayVideo: Boolean,
   /** -1 = 无限制 */
   val maxVideoCount: Long,
   /** 秒，0 = 无限制 */
@@ -187,11 +189,12 @@ data class PgPickerConfig (
       val enableVideo = pigeonVar_list[2] as Boolean
       val enableLivePhoto = pigeonVar_list[3] as Boolean
       val showRadio = pigeonVar_list[4] as Boolean
-      val maxVideoCount = pigeonVar_list[5] as Long
-      val videoMaxDuration = pigeonVar_list[6] as Double
-      val filterConfig = pigeonVar_list[7] as PgMediaFilter
-      val cropConfig = pigeonVar_list[8] as PgCropConfig?
-      return PgPickerConfig(isDarkMode, maxCount, enableVideo, enableLivePhoto, showRadio, maxVideoCount, videoMaxDuration, filterConfig, cropConfig)
+      val autoPlayVideo = pigeonVar_list[5] as Boolean
+      val maxVideoCount = pigeonVar_list[6] as Long
+      val videoMaxDuration = pigeonVar_list[7] as Double
+      val filterConfig = pigeonVar_list[8] as PgMediaFilter
+      val cropConfig = pigeonVar_list[9] as PgCropConfig?
+      return PgPickerConfig(isDarkMode, maxCount, enableVideo, enableLivePhoto, showRadio, autoPlayVideo, maxVideoCount, videoMaxDuration, filterConfig, cropConfig)
     }
   }
   fun toList(): List<Any?> {
@@ -201,6 +204,7 @@ data class PgPickerConfig (
       enableVideo,
       enableLivePhoto,
       showRadio,
+      autoPlayVideo,
       maxVideoCount,
       videoMaxDuration,
       filterConfig,

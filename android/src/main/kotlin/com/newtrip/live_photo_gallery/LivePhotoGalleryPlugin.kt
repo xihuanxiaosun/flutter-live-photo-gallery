@@ -195,8 +195,7 @@ class LivePhotoGalleryPlugin : FlutterPlugin, LivePhotoGalleryHostApi, ActivityA
                 putExtra(PreviewActivity.EXTRA_DARK_MODE,       config.isDarkMode)
                 putExtra(PreviewActivity.EXTRA_MAX_COUNT,       config.maxCount.toInt())
                 putExtra(PreviewActivity.EXTRA_MAX_VIDEO_COUNT, config.maxVideoCount.toInt())
-                // autoPlayVideo 不在跨端契约中（Dart 侧从未下发），保持默认 false
-                putExtra(PreviewActivity.EXTRA_AUTO_PLAY_VIDEO,      false)
+                putExtra(PreviewActivity.EXTRA_AUTO_PLAY_VIDEO,      config.autoPlayVideo)
                 putExtra(PreviewActivity.EXTRA_SHOW_DOWNLOAD_BUTTON, request.showDownloadButton)
                 putExtra(PreviewActivity.EXTRA_ENGINE_KEY,           engineKey)
                 putExtra(PreviewActivity.EXTRA_SAVE_ALBUM_NAME,      request.saveAlbumName)
@@ -626,6 +625,7 @@ internal fun PgPickerConfig.toPickerConfig(): PickerConfig = PickerConfig.from(
         "enableLivePhoto"  to enableLivePhoto,
         "showRadio"        to showRadio,
         "isDarkMode"       to isDarkMode,
+        "autoPlayVideo"    to autoPlayVideo,
         "maxVideoCount"    to maxVideoCount.toInt(),
         "videoMaxDuration" to videoMaxDuration,
         "filterConfig"     to filterConfig.wire,

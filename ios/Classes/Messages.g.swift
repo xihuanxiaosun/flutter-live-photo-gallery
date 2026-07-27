@@ -150,6 +150,8 @@ struct PgPickerConfig {
   var enableVideo: Bool
   var enableLivePhoto: Bool
   var showRadio: Bool
+  /// 视频进入预览页时是否自动播放（默认 false）
+  var autoPlayVideo: Bool
   /// -1 = 无限制
   var maxVideoCount: Int64
   /// 秒，0 = 无限制
@@ -165,10 +167,11 @@ struct PgPickerConfig {
     let enableVideo = pigeonVar_list[2] as! Bool
     let enableLivePhoto = pigeonVar_list[3] as! Bool
     let showRadio = pigeonVar_list[4] as! Bool
-    let maxVideoCount = pigeonVar_list[5] as! Int64
-    let videoMaxDuration = pigeonVar_list[6] as! Double
-    let filterConfig = pigeonVar_list[7] as! PgMediaFilter
-    let cropConfig: PgCropConfig? = nilOrValue(pigeonVar_list[8])
+    let autoPlayVideo = pigeonVar_list[5] as! Bool
+    let maxVideoCount = pigeonVar_list[6] as! Int64
+    let videoMaxDuration = pigeonVar_list[7] as! Double
+    let filterConfig = pigeonVar_list[8] as! PgMediaFilter
+    let cropConfig: PgCropConfig? = nilOrValue(pigeonVar_list[9])
 
     return PgPickerConfig(
       isDarkMode: isDarkMode,
@@ -176,6 +179,7 @@ struct PgPickerConfig {
       enableVideo: enableVideo,
       enableLivePhoto: enableLivePhoto,
       showRadio: showRadio,
+      autoPlayVideo: autoPlayVideo,
       maxVideoCount: maxVideoCount,
       videoMaxDuration: videoMaxDuration,
       filterConfig: filterConfig,
@@ -189,6 +193,7 @@ struct PgPickerConfig {
       enableVideo,
       enableLivePhoto,
       showRadio,
+      autoPlayVideo,
       maxVideoCount,
       videoMaxDuration,
       filterConfig,
