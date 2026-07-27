@@ -50,7 +50,7 @@ class _R {
   static const coverV2 = 'https://picsum.photos/seed/lpg-v2/1000/1000';
   static const coverV3 = 'https://picsum.photos/seed/lpg-v3/1000/1000';
 
-  // 视频（大陆可达）：runoob 两个小片段 + 阿里云官方 demo（34MB，用来测大文件/缓冲卡顿）
+  // 视频（大陆可达）：runoob 两个小片段 + 阿里云官方 demo（~146MB，用来测大文件/缓冲卡顿）
   static const videoSmall1 = 'https://www.runoob.com/try/demo_source/mov_bbb.mp4';
   static const videoSmall2 = 'https://www.runoob.com/try/demo_source/movie.mp4';
   static const videoBig = 'https://player.alicdn.com/video/aliyunmedia.mp4';
@@ -133,18 +133,18 @@ final List<_Post> _posts = [
           cover: _R.coverV1, videoUrl: _R.videoSmall1, duration: 10),
       const _Media.image(_R.imgE),
       _Media.video(
-          cover: _R.coverV2, videoUrl: _R.videoSmall2, duration: 5),
+          cover: _R.coverV2, videoUrl: _R.videoSmall2, duration: 13),
     ],
   ),
   _Post(
     author: '多视频帖',
-    text: '④ 多个视频：逐页自动播放（含一个 34MB 大文件，用来看缓冲/卡顿时的表现）。',
+    text: '④ 多个视频：逐页自动播放（含一个 ~146MB 大文件，用来看缓冲/卡顿时的表现）。',
     media: [
       _Media.video(
           cover: _R.coverV1, videoUrl: _R.videoSmall1, duration: 10),
       _Media.video(
-          cover: _R.coverV2, videoUrl: _R.videoSmall2, duration: 5),
-      _Media.video(cover: _R.coverV3, videoUrl: _R.videoBig, duration: 21),
+          cover: _R.coverV2, videoUrl: _R.videoSmall2, duration: 13),
+      _Media.video(cover: _R.coverV3, videoUrl: _R.videoBig, duration: 262),
     ],
   ),
   const _Post(
@@ -327,9 +327,15 @@ class _VideoBadge extends StatelessWidget {
   final double? duration;
   const _VideoBadge({this.duration});
 
+  /// 与原生预览进度条一致的 m:ss 格式（例如 0:10 / 4:22），避免角标与放大后对不上。
+  static String _fmt(double seconds) {
+    final t = seconds.round();
+    return '${t ~/ 60}:${(t % 60).toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final label = duration != null ? '${duration!.toInt()}″' : '视频';
+    final label = duration != null ? _fmt(duration!) : '视频';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
       decoration: BoxDecoration(
