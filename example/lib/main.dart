@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:live_photo_gallery/live_photo_gallery.dart';
 import 'pages/edit_post_page.dart';
+import 'pages/post_feed_page.dart';
 
 void main() {
   runApp(const MyApp());
@@ -83,6 +84,15 @@ class _HomePageState extends State<HomePage> {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const EditPostPage()),
+                ),
+              ),
+              _ActionButton(
+                label: '帖子查看（信息流·图文视频混排）',
+                icon: Icons.dynamic_feed_outlined,
+                color: Colors.blue,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const PostFeedPage()),
                 ),
               ),
             ],
