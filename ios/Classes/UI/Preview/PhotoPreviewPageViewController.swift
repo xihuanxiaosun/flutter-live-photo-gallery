@@ -63,6 +63,10 @@ class SinglePhotoViewController: UIViewController {
 
     private var isLoadingVideo = false  // 防止异步加载期间重复触发
 
+    /// 是否已展示过首帧图片。opportunistic 会多次回调（先降质后高清），
+    /// 只在首次拿到非空图片时做交叉淡入，后续升清直接替换避免每次闪烁。
+    private var hasDisplayedImage = false
+
     /// 记录 PHImageManager 的图片请求 ID，页面消失时取消以释放内存压力
     private var imageRequestID: PHImageRequestID?
     /// 记录视频资源请求 ID，页面消失时取消
@@ -263,7 +267,9 @@ class SinglePhotoViewController: UIViewController {
         }
 
         let options = PHImageRequestOptions()
-        options.deliveryMode = .highQualityFormat
+        // opportunistic：先回调一张降质图立即显示、再回调最终高清图升清，
+        // 避免 highQualityFormat 下「先空白转圈、最后高清图突兀弹入」的闪现。
+        options.deliveryMode = .opportunistic
         options.isNetworkAccessAllowed = true
         options.isSynchronous = false
         options.resizeMode = .exact
@@ -274,12 +280,40 @@ class SinglePhotoViewController: UIViewController {
             targetSize: PHImageManagerMaximumSize,
             contentMode: .aspectFit,
             options: options
-        ) { [weak self] image, _ in
+        ) { [weak self] image, info in
+            // opportunistic 下本回调会被多次调用：先降质、后高清。
+            let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
             DispatchQueue.main.async {
-                self?.imageRequestID = nil
-                self?.imageView.image = image
-                self?.loadingIndicator.stopAnimating()
+                guard let self = self else { return }
+                // 任何一张图片（含降质）到手即停转圈；最终回调即便无图也停，避免卡死。
+                if image != nil || !isDegraded {
+                    self.loadingIndicator.stopAnimating()
+                }
+                self.setImageCrossfadingIfFirst(image)
+                // 仅在最终高清回调时清空 requestID；降质回调保留 ID，
+                // 让 viewWillDisappear 仍能取消尚未返回的高清请求。
+                if !isDegraded {
+                    self.imageRequestID = nil
+                }
             }
+        }
+    }
+
+    /// 首帧图片交叉淡入：第一次拿到非空图片时用 0.2s 交叉溶解淡入，消除首次打开/翻页的空白闪现；
+    /// 之后的（opportunistic 升清）赋值直接替换，避免每次升清都闪一下。
+    private func setImageCrossfadingIfFirst(_ image: UIImage?) {
+        guard let image = image else { return }
+        guard !hasDisplayedImage else {
+            imageView.image = image
+            return
+        }
+        hasDisplayedImage = true
+        UIView.transition(
+            with: imageView,
+            duration: 0.2,
+            options: [.transitionCrossDissolve, .beginFromCurrentState]
+        ) {
+            self.imageView.image = image
         }
     }
 
@@ -291,7 +325,7 @@ class SinglePhotoViewController: UIViewController {
             DispatchQueue.main.async {
                 self?.loadingIndicator.stopAnimating()
                 if case .success(let image) = result {
-                    self?.imageView.image = image
+                    self?.setImageCrossfadingIfFirst(image)
                 }
             }
         }
@@ -301,7 +335,7 @@ class SinglePhotoViewController: UIViewController {
         switch mediaType {
         case .image, .livePhoto:
             if let image = UIImage(contentsOfFile: url.path) {
-                imageView.image = image
+                setImageCrossfadingIfFirst(image)
             }
             loadingIndicator.stopAnimating()
         case .video:
@@ -464,6 +498,15 @@ class SinglePhotoViewController: UIViewController {
             livePhotoPlayer.stop()
         }
     }
+
+    /// 由 PageViewController 宿主在「本页成为当前可见页」时调用：
+    /// 满足 autoPlayVideo 配置且为真视频时，武装播放器的自动播放（就绪即播）。
+    /// 相册 Live Photo 不在此列（那是长按微视频）。武装是幂等的：
+    /// 播放器尚未创建时仅置位，viewDidLoad/viewWillAppear 的 loadVideo 就绪后消费。
+    func activateIfCurrent() {
+        guard config.autoPlayVideo, asset.isVideo else { return }
+        videoPlayerController.enableAutoPlayOnReady()
+    }
 }
 
 extension SinglePhotoViewController: UIScrollViewDelegate {
@@ -485,16 +528,33 @@ extension SinglePhotoViewController: UIScrollViewDelegate {
     // MARK: - 双击复原
 
     @objc func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
-        guard scrollView.zoomScale > scrollView.minimumZoomScale else { return }
-        UIView.animate(
-            withDuration: 0.3,
-            delay: 0,
-            usingSpringWithDamping: 0.85,
-            initialSpringVelocity: 0.3,
-            options: .curveEaseInOut
-        ) {
-            self.scrollView.setZoomScale(self.scrollView.minimumZoomScale, animated: false)
-            self.scrollView.contentOffset = .zero
+        // 没有可缩放空间（max <= min）时忽略双击
+        guard scrollView.maximumZoomScale > scrollView.minimumZoomScale else { return }
+
+        if scrollView.zoomScale > scrollView.minimumZoomScale {
+            // 已放大：弹回最小缩放（保留弹簧动画）
+            UIView.animate(
+                withDuration: 0.3,
+                delay: 0,
+                usingSpringWithDamping: 0.85,
+                initialSpringVelocity: 0.3,
+                options: .curveEaseInOut
+            ) {
+                self.scrollView.setZoomScale(self.scrollView.minimumZoomScale, animated: false)
+                self.scrollView.contentOffset = .zero
+            }
+        } else {
+            // 处于最小缩放：以双击点为中心放大到目标倍率
+            let targetScale = min(scrollView.maximumZoomScale,
+                                  max(scrollView.minimumZoomScale * 3, 2.5))
+            let point = gesture.location(in: imageView)
+            let width = scrollView.bounds.width / targetScale
+            let height = scrollView.bounds.height / targetScale
+            let rect = CGRect(x: point.x - width / 2,
+                              y: point.y - height / 2,
+                              width: width,
+                              height: height)
+            scrollView.zoom(to: rect, animated: true)
         }
     }
 }
@@ -554,6 +614,8 @@ class PhotoPreviewPageViewController: UIViewController {
     private lazy var cropCoordinator = PreviewCropCoordinator(host: self)
 
     private var currentIndex: Int
+    /// 打开预览时的初始索引。翻页后 sourceFrame 已过期，仅当仍停在此页时才允许飞回缩略图。
+    private let initialIndex: Int
     private var sourceFrame: CGRect
     var pageViewController: UIPageViewController!
     var currentPhotoVC: SinglePhotoViewController?
@@ -665,7 +727,52 @@ class PhotoPreviewPageViewController: UIViewController {
         btn.addTarget(self, action: #selector(previewDoneTapped), for: .touchUpInside)
         return btn
     }()
-    
+
+    // ── 底部页码指示器 ──────────────────────────────────────────────
+    // bar 的兄弟视图（不在 topBar/bottomBar 内），底部居中，随 bar 一起淡入淡出。
+    // ≤8 张用一排小圆点，>8 张用「n / total」胶囊；二选一，按数量在构建时确定。
+
+    /// 底部页码圆点视图（仅 2...8 张时非空；更多或视频页时为空/隐藏）
+    private var pageIndicatorDots: [UIView] = []
+
+    private lazy var pageIndicator: UIView = makePageIndicator()
+
+    private func makePageIndicator() -> UIView {
+        let container = UIView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.isUserInteractionEnabled = false
+
+        // 底部圆点只服务「少量图文混排」（2...8 张，信息流常见场景）：当前页白色、其余
+        // 白色 α0.35。超过 8 张不再显示底部指示，改由顶部 n/m 计数承担，避免两处重复计数。
+        guard allAssets.count > 1, allAssets.count <= 8 else { return container }
+
+        let stack = UIStackView()
+        stack.axis = .horizontal
+        stack.spacing = 6
+        stack.alignment = .center
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        for _ in 0..<allAssets.count {
+            let dot = UIView()
+            dot.backgroundColor = UIColor.white.withAlphaComponent(0.35)
+            dot.layer.cornerRadius = 3
+            dot.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                dot.widthAnchor.constraint(equalToConstant: 6),
+                dot.heightAnchor.constraint(equalToConstant: 6),
+            ])
+            stack.addArrangedSubview(dot)
+            pageIndicatorDots.append(dot)
+        }
+        container.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: container.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        ])
+        return container
+    }
+
     // MARK: - Initialization
     
     init(
@@ -683,6 +790,7 @@ class PhotoPreviewPageViewController: UIViewController {
         self.allAssets = assets
         self.selectedAssets = selectedAssets
         self.currentIndex = initialIndex
+        self.initialIndex = initialIndex
         self.sourceFrame = sourceFrame
         self.config = config
         self.isOriginalPhoto = isOriginalPhoto
@@ -735,7 +843,10 @@ class PhotoPreviewPageViewController: UIViewController {
             direction: .forward,
             animated: false
         )
-        
+
+        // 初始页即当前页：若开启自动播放，武装该页视频（就绪即播）
+        initialVC.activateIfCurrent()
+
         addChild(pageViewController)
         view.insertSubview(pageViewController.view, at: 0)
         pageViewController.view.translatesAutoresizingMaskIntoConstraints = false
@@ -864,8 +975,20 @@ class PhotoPreviewPageViewController: UIViewController {
         shareButton.trailingAnchor
             .constraint(equalTo: downloadButton.leadingAnchor, constant: -4)
             .isActive = true
+
+        // ── 底部页码指示器（bar 的兄弟视图，随 bar 一起淡入淡出）──────────
+        view.addSubview(pageIndicator)
+        // 选择模式有底部栏时抬到栏上方，避免与其重叠（对齐视频控制条的 62/12 内边距）
+        let indicatorBottomInset: CGFloat = config.showRadio ? 62 : 12
+        NSLayoutConstraint.activate([
+            pageIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            pageIndicator.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+                                                  constant: -indicatorBottomInset),
+        ])
+        // 仅 1 张（或空）时无需页码
+        pageIndicator.isHidden = allAssets.count <= 1
     }
-    
+
     private func setupGestures() {
         let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
         longPress.minimumPressDuration = LivePhotoConstants.longPressDuration
@@ -901,6 +1024,8 @@ class PhotoPreviewPageViewController: UIViewController {
         if !bottomBar.isHidden {
             bottomBar.alpha = alpha
         }
+        // 页码指示器随 bar 一起淡入淡出（isHidden 时设 alpha 无副作用，仍保持隐藏）
+        pageIndicator.alpha = alpha
     }
 
     private func hideBarsForInteractiveDismiss() {
@@ -953,6 +1078,8 @@ class PhotoPreviewPageViewController: UIViewController {
 
         countLabel.text = "\(currentIndex + 1) / \(allAssets.count)"
 
+        updatePageIndicator()
+
         selectButton.isSelected = selectedAssets.contains(where: { $0.id == currentAsset.id })
 
         // 底部完成按钮：有选择时才可点击（纯预览模式始终可用）
@@ -996,7 +1123,25 @@ class PhotoPreviewPageViewController: UIViewController {
         }()
         previewCropButton.isHidden = !(config.showRadio && isImageAsset)
     }
-    
+
+    /// 刷新底部页码指示器到 currentIndex：圆点高亮当前点，胶囊更新文字。仅 1 张时隐藏。
+    private func updatePageIndicator() {
+        // 仅 2...8 张图文显示底部圆点；视频页底部由播放控制条（含进度滑块）占据，一并隐藏，
+        // 避免与滑块同处底部重叠（视频自带进度条提供位置语境，翻回图片页再恢复）。
+        guard allAssets.count > 1, allAssets.count <= 8,
+              currentIndex >= 0, currentIndex < allAssets.count,
+              !allAssets[currentIndex].isVideo else {
+            pageIndicator.isHidden = true
+            return
+        }
+        pageIndicator.isHidden = false
+        for (i, dot) in pageIndicatorDots.enumerated() {
+            dot.backgroundColor = (i == currentIndex)
+                ? UIColor.white
+                : UIColor.white.withAlphaComponent(0.35)
+        }
+    }
+
     // MARK: - Actions
     
     @objc private func closeTapped() {
@@ -1327,6 +1472,8 @@ extension PhotoPreviewPageViewController: UIPageViewControllerDelegate, UIPageVi
         currentPhotoVC = currentVC
         updateUI()
 
+        // 新的当前页：若开启自动播放，武装其视频（离屏预实例化的邻页不会自动播放）
+        currentVC.activateIfCurrent()
     }
 }
 
@@ -1404,12 +1551,16 @@ extension PhotoPreviewPageViewController: UIViewControllerTransitioningDelegate 
         presenting: UIViewController,
         source: UIViewController
     ) -> UIViewControllerAnimatedTransitioning? {
-        return PhotoPreviewAnimator(isPresenting: true)
+        // 呈现时总是打开在初始页，sourceFrame 有效：传入以启用「从缩略图飞入」分支
+        // （与 forDismissed 对称；缺省 .zero 会让 animatePresentation 退回旧的淡入缩放）
+        return PhotoPreviewAnimator(isPresenting: true, sourceFrame: sourceFrame)
     }
     
     func animationController(
         forDismissed dismissed: UIViewController
     ) -> UIViewControllerAnimatedTransitioning? {
-        return PhotoPreviewAnimator(isPresenting: false, sourceFrame: sourceFrame)
+        // 翻页后原 sourceFrame 已过期，只有仍在初始页时才飞回缩略图，否则退回淡出
+        let frame: CGRect = (currentIndex == initialIndex) ? sourceFrame : .zero
+        return PhotoPreviewAnimator(isPresenting: false, sourceFrame: frame)
     }
 }

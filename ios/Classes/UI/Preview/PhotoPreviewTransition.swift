@@ -32,23 +32,63 @@ class PhotoPreviewAnimator: NSObject, UIViewControllerAnimatedTransitioning {
         }
 
         let containerView = context.containerView
-        containerView.addSubview(toView)
+        let duration = transitionDuration(using: context)
 
-        toView.alpha = 0
-        toView.transform = CGAffineTransform(scaleX: 0.95, y: 0.95)
+        // sourceFrame 有效时：从缩略图位置放大飞入，与消失动画对称。
+        // 用 transform 缩放整个 toView（而非依赖尚未加载完成的 hero 图），更稳。
+        if !sourceFrame.isEmpty {
+            containerView.addSubview(toView)
 
-        UIView.animate(
-            withDuration: transitionDuration(using: context),
-            delay: 0,
-            options: .curveEaseOut,
-            animations: {
-                toView.alpha = 1
-                toView.transform = .identity
-            },
-            completion: { _ in
-                context.completeTransition(!context.transitionWasCancelled)
+            // 黑色背板从透明淡入，垫在 toView 之下
+            let backgroundView = UIView(frame: containerView.bounds)
+            backgroundView.backgroundColor = .black
+            backgroundView.alpha = 0
+            containerView.insertSubview(backgroundView, belowSubview: toView)
+
+            // 把 toView 整帧缩小平移到 sourceFrame 位置作为起点
+            let scale = max(sourceFrame.width / containerView.bounds.width,
+                            sourceFrame.height / containerView.bounds.height)
+            if scale > 0 {
+                let tx = sourceFrame.midX - containerView.bounds.midX
+                let ty = sourceFrame.midY - containerView.bounds.midY
+                toView.transform = CGAffineTransform(translationX: tx, y: ty).scaledBy(x: scale, y: scale)
             }
-        )
+            toView.alpha = 0
+
+            UIView.animate(
+                withDuration: duration,
+                delay: 0,
+                options: .curveEaseOut,
+                animations: {
+                    toView.transform = .identity
+                    toView.alpha = 1
+                    backgroundView.alpha = 1
+                },
+                completion: { _ in
+                    backgroundView.removeFromSuperview()
+                    context.completeTransition(!context.transitionWasCancelled)
+                }
+            )
+        } else {
+            // sourceFrame 缺失：退回原来的 alpha + scale-from-0.95 淡入
+            containerView.addSubview(toView)
+
+            toView.alpha = 0
+            toView.transform = CGAffineTransform(scaleX: 0.95, y: 0.95)
+
+            UIView.animate(
+                withDuration: duration,
+                delay: 0,
+                options: .curveEaseOut,
+                animations: {
+                    toView.alpha = 1
+                    toView.transform = .identity
+                },
+                completion: { _ in
+                    context.completeTransition(!context.transitionWasCancelled)
+                }
+            )
+        }
     }
 
     private func animateDismissal(using context: UIViewControllerContextTransitioning) {

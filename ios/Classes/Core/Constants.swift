@@ -35,8 +35,6 @@ enum UIConstants {
     }
 
     enum Preview {
-        static let topBarHeight: CGFloat = 50
-        static let closeButtonFontSize: CGFloat = 36
         static let selectButtonSize: CGFloat = 30
         static let dismissProgressThreshold: CGFloat = 0.25
         static let dismissVelocityThreshold: CGFloat = 1000

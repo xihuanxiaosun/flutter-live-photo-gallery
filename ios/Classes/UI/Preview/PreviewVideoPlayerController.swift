@@ -46,6 +46,10 @@ final class PreviewVideoPlayerController {
     /// 避免调用方漏掉某条中止分支导致该页的 Live Photo 永久无法再播。
     private var isPlaying = false
 
+    /// 本页成为当前页时是否自动播放（config.autoPlayVideo）。由宿主 enableAutoPlayOnReady() 置位；
+    /// 播放器就绪即消费，翻走时 stopVideo() 复位，避免离屏页或旧页自行恢复播放。
+    private var autoPlayOnReady = false
+
     /// 是否已创建播放器。页面从 UIPageViewController 滑回时据此决定要不要重新加载。
     var hasPlayer: Bool { videoPlayer != nil }
 
@@ -118,6 +122,10 @@ final class PreviewVideoPlayerController {
                     // 就绪即显示控制条，让用户立刻看到总时长并可拖动
                     self.controlsView.isHidden = false
                     self.controlsView.setProgress(current: 0, duration: CMTimeGetSeconds(item.duration))
+                    // 宿主已标记本页为当前页且开启自动播放：就绪即播（updatePlayButton 会淡出中央按钮）
+                    if self.autoPlayOnReady && !self.isPlaying {
+                        self.startPlayback()
+                    }
                 case .failed:
                     self.loadingIndicator.stopAnimating()
                     self.playButton.isHidden = true
@@ -216,16 +224,32 @@ final class PreviewVideoPlayerController {
             isPlaying = false
             updatePlayButton(isPlaying: false)
         } else {
-            player.play()
-            isPlaying = true
-            updatePlayButton(isPlaying: true)
-            controlsView.isHidden = false
+            startPlayback()
+        }
+    }
 
-            // 隐藏图片显示视频
-            UIView.animate(withDuration: 0.3) {
-                self.imageView.alpha = 0
-            }
+    /// 开始播放：togglePlayPause 的「播放」分支与自动播放共用，行为与原分支一致。
+    private func startPlayback() {
+        guard let player = videoPlayer else { return }
+        player.play()
+        isPlaying = true
+        updatePlayButton(isPlaying: true)
+        controlsView.isHidden = false
 
+        // 隐藏图片显示视频
+        UIView.animate(withDuration: 0.3) {
+            self.imageView.alpha = 0
+        }
+    }
+
+    /// 宿主在「本页成为当前可见页」时调用：开启自动播放。
+    /// 播放器已就绪且未在播放则立即开始，否则仅置位、待 readyToPlay 时消费。
+    func enableAutoPlayOnReady() {
+        autoPlayOnReady = true
+        if let player = videoPlayer,
+           player.currentItem?.status == .readyToPlay,
+           !isPlaying {
+            startPlayback()
         }
     }
 
@@ -290,6 +314,9 @@ final class PreviewVideoPlayerController {
     func stopVideo() {
         // 自增播放代次，作废任何仍在进行中的 Live Photo 抽帧回调（见 playPhotoLibraryLivePhoto）
         playbackGeneration &+= 1
+
+        // 翻走的页不应静默恢复自动播放；宿主在它再次成为当前页时会重新开启
+        autoPlayOnReady = false
 
         // statusObservation 设为 nil 即自动从对应的 AVPlayerItem 移除观察者
         // 无论 playerItem 是否已替换，都不会崩溃
