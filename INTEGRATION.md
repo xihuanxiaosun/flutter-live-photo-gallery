@@ -276,6 +276,8 @@ try {
 - **缩略图白拿**：`MediaItem.thumbnailPath` 就是 200×200 本地缩略图，列表/预览直接用，别再为了缩略图去 `exportAsset`。
 - **`sourceFrame`** 用「被点那个格子」自己的 `RenderBox` 计算，不要用整页 context，否则飞入/飞回起点会错。
 - **`autoPlayVideo`** 只自动播**当前页**的视频（相邻页/相册 Live Photo 不会），翻走即停；当前默认**带声、播一次、不循环**。
+- **纯预览模式（`showRadio: false`，微信式）**：预览页**没有顶栏**（关闭/分享/计数都不显示），**单击图片即关闭**（放大态/视频页除外），状态栏白色，底部圆点常驻。选择模式（`showRadio: true`，来自 `pickAssets`）仍保留顶栏与选择 UI。
+- **保存网络图 = 长按**：传 `showDownloadButton: true` 后，预览里**长按网络静图**弹「保存图片 / 取消」底部弹窗（顶栏已隐藏，长按取代了原来的顶部保存按钮）。结果仍走 `onDownloadResult`，记得监听它给用户反馈。相册 Live Photo 的长按仍是播放。
 - **信息流里的时长角标**来自你传的 `AssetInput.duration`（或你后端字段），而放大预览的时长是播放器读真实视频得到的——两者对不上是**数据**对不上，不是插件问题。
 - **临时文件**：`exportAsset` / 保存会产生临时文件，适时调 `cleanupTempFiles()`。
 - **iOS Info.plist 两个权限键必须加**，否则一调相册就崩。
