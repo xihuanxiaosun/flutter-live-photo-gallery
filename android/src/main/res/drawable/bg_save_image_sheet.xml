@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 保存底部弹窗背景：顶部圆角的 surface（lpg_surface 已含 values-night 覆盖，随 day/night 切换） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/lpg_surface" />
+    <corners
+        android:topLeftRadius="16dp"
+        android:topRightRadius="16dp" />
+</shape>

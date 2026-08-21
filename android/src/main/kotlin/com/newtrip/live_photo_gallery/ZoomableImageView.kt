@@ -52,6 +52,13 @@ class ZoomableImageView @JvmOverloads constructor(
      */
     var onSingleTap: (() -> Unit)? = null
 
+    /**
+     * 长按回调：预览模式下用于「长按图片弹出保存底部弹窗」。
+     * GestureDetector 的 onLongPress 独立于 tap/doubleTap 触发，故不会与单击关闭、双击放大冲突。
+     * 默认 null（不处理长按）；由 PreviewViewHolder.bind 按「网络静图 + 允许保存」设置或复位。
+     */
+    var onLongPress: (() -> Unit)? = null
+
     private val scaleDetector = ScaleGestureDetector(
         context,
         object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -108,6 +115,12 @@ class ZoomableImageView @JvmOverloads constructor(
                 val target = if (currentScale > 1.2f) MIN_SCALE else DOUBLE_TAP_SCALE
                 animateScaleTo(target, e.x, e.y)
                 return true
+            }
+
+            override fun onLongPress(e: MotionEvent) {
+                // 长按：触发外部回调（如弹出保存底部弹窗）。onLongPress 会抢占后续 tap/doubleTap，
+                // 故与单击关闭、双击放大互斥，不会误触。
+                onLongPress?.invoke()
             }
 
             override fun onScroll(

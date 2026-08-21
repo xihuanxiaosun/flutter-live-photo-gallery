@@ -4,4 +4,7 @@
     <string name="preview_retry">点按重试</string>
     <string name="preview_load_failed">加载失败</string>
     <string name="preview_loading">加载中</string>
+    <!-- 长按网络静图弹出的保存底部弹窗（微信式）文案 -->
+    <string name="preview_save_image">保存图片</string>
+    <string name="preview_cancel">取消</string>
 </resources>

@@ -48,6 +48,7 @@ import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -198,6 +199,9 @@ class PreviewActivity : AppCompatActivity() {
         if (::previewStage.isInitialized) {
             previewStage.handler?.removeCallbacksAndMessages(null)
         }
+        // 关闭仍打开的保存弹窗，避免窗口泄漏（如弹窗开着时旋转/销毁）
+        saveSheetDialog?.dismiss()
+        saveSheetDialog = null
         videoController.release()
     }
 
@@ -706,6 +710,33 @@ class PreviewActivity : AppCompatActivity() {
             })
             .getIntent(this)
         cropLauncher.launch(intent)
+    }
+
+    /**
+     * 长按网络静图弹出的保存底部弹窗（微信式）。
+     * 内容为 dialog_save_image_sheet 布局：「保存图片」复用现有 downloadCurrentAsset()（读 viewPager.currentItem，
+     * 走 mediaDownloader + channel 回调），「取消」仅关闭。由 PreviewViewHolder.bind 在「网络静图 + showDownloadButton」时挂到长按。
+     */
+    /** 当前保存底部弹窗，持有引用以便 onDestroy 关闭，避免弹窗开着时 Activity 销毁泄漏窗口 */
+    private var saveSheetDialog: BottomSheetDialog? = null
+
+    private fun showSaveImageSheet() {
+        saveSheetDialog?.dismiss()
+        val dialog = BottomSheetDialog(this)
+        saveSheetDialog = dialog
+        dialog.setOnDismissListener { if (saveSheetDialog === dialog) saveSheetDialog = null }
+        val sheet  = layoutInflater.inflate(R.layout.dialog_save_image_sheet, null)
+        dialog.setContentView(sheet)
+        // 「保存图片」：先关弹窗，再复用现有下载逻辑，避免改动既有 downloadCurrentAsset 契约
+        sheet.findViewById<View>(R.id.item_save_image).setOnClickListener {
+            dialog.dismiss()
+            downloadCurrentAsset()
+        }
+        // 「取消」：仅关闭弹窗
+        sheet.findViewById<View>(R.id.item_cancel).setOnClickListener {
+            dialog.dismiss()
+        }
+        dialog.show()
     }
 
     /**
@@ -1394,6 +1425,7 @@ class PreviewActivity : AppCompatActivity() {
             val url       = asset["url"]       as? String
             val videoUrl  = asset["videoUrl"]  as? String
             val editedPath = asset["editedPath"] as? String
+            val type      = asset["type"]      as? String
             val mediaType = (asset["mediaType"] as? String) ?: "image"
             val isVideo   = mediaType == "video"
 
@@ -1428,8 +1460,9 @@ class PreviewActivity : AppCompatActivity() {
                 } else null
                 playBtn.setOnClickListener(clickHandler)
                 zoomView.setOnClickListener(clickHandler)
-                // 视频页保留原有播放点击，不启用单击关闭
+                // 视频页保留原有播放点击，不启用单击关闭 / 长按保存
                 zoomView.onSingleTap = null
+                zoomView.onLongPress = null
             } else {
                 this.currentPlayUri = null
                 playBtn.setOnClickListener(null)
@@ -1438,6 +1471,15 @@ class PreviewActivity : AppCompatActivity() {
                 // 每次 bind 都显式赋值，复用 holder 不会残留旧闭包。
                 zoomView.onSingleTap = if (!showRadio) {
                     { finishWithSlideDown() }
+                } else {
+                    null
+                }
+                // 图片长按：网络静图 + 允许保存(showDownloadButton) 时弹出保存底部弹窗（微信式）。
+                // 独立于 showRadio，两种模式都可用；长按由 GestureDetector 独立触发，不与单击/双击冲突。
+                // 每次 bind 都显式赋值，复用 holder 不会残留旧闭包。
+                zoomView.onLongPress = if (type == "network" && mediaType == "image"
+                    && showDownloadButton && !url.isNullOrBlank()) {
+                    { showSaveImageSheet() }
                 } else {
                     null
                 }

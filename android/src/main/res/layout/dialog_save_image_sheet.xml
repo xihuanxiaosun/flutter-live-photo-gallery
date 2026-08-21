@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    长按网络静图弹出的保存底部弹窗内容（微信式）。
+    顶部圆角 surface 上两行可点行：「保存图片」「取消」；点击带 ripple 反馈。
+    颜色走主题 colorSurface/colorOnSurface，随 day/night 自动切换。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_save_image_sheet"
+    android:orientation="vertical"
+    android:paddingBottom="8dp">
+
+    <!-- 「保存图片」：复用现有下载逻辑（PreviewActivity.showSaveImageSheet → downloadCurrentAsset） -->
+    <TextView
+        android:id="@+id/item_save_image"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:text="@string/preview_save_image"
+        android:textColor="?attr/colorOnSurface"
+        android:textSize="16sp" />
+
+    <!-- 细分割线：区隔「保存图片」与「取消」 -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:background="?android:attr/listDivider" />
+
+    <!-- 「取消」：仅关闭弹窗 -->
+    <TextView
+        android:id="@+id/item_cancel"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:text="@string/preview_cancel"
+        android:textColor="?attr/colorOnSurface"
+        android:textSize="16sp" />
+
+</LinearLayout>
