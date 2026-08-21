@@ -1265,6 +1265,9 @@ class PhotoPreviewPageViewController: UIViewController {
     /// 保存当前网络图片/视频到系统相册
     @objc private func downloadTapped() {
         guard let callback = downloadCallback else { return }
+        // 在途去重：downloadButton.isEnabled 是保存进行中的闭锁（保存开始置 false、完成恢复）。
+        // 长按保存路径不经过按钮，这里显式据此拦截，避免重复长按触发并发重复保存。
+        guard downloadButton.isEnabled else { return }
 
         // #7 fix: currentIndex 越界防护
         guard currentIndex < allAssets.count else { return }
@@ -1371,6 +1374,8 @@ class PhotoPreviewPageViewController: UIViewController {
     }
 
     @objc private func handleBarToggleTap(_ gesture: UITapGestureRecognizer) {
+        // 保存弹窗已弹出时，点击空白交给弹窗遮罩自身处理（仅关闭弹窗），不触发关闭预览/显隐工具栏
+        if saveSheetDim != nil { return }
         // 预览模式（showRadio=false）：顶/底栏已整体隐藏，单击图片即关闭预览（微信式），
         // 走与关闭按钮相同的路径（dismiss + completion）。视频播放键 / 控制条 / 分享等 UIControl
         // 已由 gestureRecognizer(_:shouldReceive:) 排除，双击缩放由 shouldRequireFailureOf 保证不误触。
@@ -1444,16 +1449,113 @@ class PhotoPreviewPageViewController: UIViewController {
         
         switch gesture.state {
         case .began:
-            currentPhotoVC.playLivePhoto()
-            
+            // 触感反馈先行：无论接下来是播放 Live Photo 还是弹保存动作表，长按落定即给一次中度反馈
             let feedback = UIImpactFeedbackGenerator(style: .medium)
             feedback.impactOccurred()
-            
+
+            if currentPhotoVC.asset.isLivePhoto {
+                // Live Photo：长按播放微视频（相册/网络/本地的播放分流在 playLivePhoto 内部处理）
+                currentPhotoVC.playLivePhoto()
+            } else if downloadCallback != nil && isCurrentAssetNetworkImage() {
+                // 网络静态图片且调用方开启了保存（downloadCallback != nil 即为「允许保存」）：
+                // 长按弹出保存动作表，确认后复用 downloadTapped 的既有保存逻辑。
+                presentSaveActionSheet()
+            }
+
         case .ended, .cancelled:
             currentPhotoVC.stopVideo()
-            
+
         default:
             break
+        }
+    }
+
+    /// 当前页是否为「网络静态图片」：镜像 downloadTapped 的守卫
+    /// （currentIndex 越界防护 + sourceType 为 .network 且 mediaType 为 .image），
+    /// 用作长按保存动作表的开启条件，与下载按钮的可用条件保持一致。
+    private func isCurrentAssetNetworkImage() -> Bool {
+        guard currentIndex < allAssets.count else { return false }
+        guard case .network(_, let mediaType) = allAssets[currentIndex].sourceType else { return false }
+        guard case .image = mediaType else { return false }
+        return true
+    }
+
+    /// 当前保存弹窗的遮罩层（nil 表示未弹出）
+    private weak var saveSheetDim: UIView?
+
+    /// 弹出底部保存弹窗：仅「保存图片 / 取消」两项，确认后复用 downloadTapped 的网络图保存逻辑。
+    ///
+    /// 不用系统 UIAlertController：预览页是自定义转场呈现（.custom + 保留下层视图），
+    /// 从其上弹系统 actionSheet 会出现呈现/命中异常（按钮错位、点不动）。改为在本页 view 内
+    /// 自绘底部弹窗，呈现可靠，也与 Android 的 BottomSheetDialog 观感一致。
+    private func presentSaveActionSheet() {
+        guard saveSheetDim == nil else { return }  // 防重复弹出
+
+        // 半透明遮罩，点击空白处关闭
+        let dim = UIView(frame: view.bounds)
+        dim.backgroundColor = UIColor.black.withAlphaComponent(0.45)
+        dim.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        dim.alpha = 0
+        let dimTap = UITapGestureRecognizer(target: self, action: #selector(dismissSaveSheet))
+        // 关键：默认 cancelsTouchesInView=true 会把落在「保存图片」按钮上的触摸取消掉，
+        // 导致按钮的 touchUpInside 不触发（点了不保存）。置 false 让按钮与遮罩各自响应，
+        // 遮罩的 dismissSaveSheet 幂等，重复调用无副作用。
+        dimTap.cancelsTouchesInView = false
+        dim.addGestureRecognizer(dimTap)
+        view.addSubview(dim)
+        saveSheetDim = dim
+
+        // 「保存图片 / 取消」竖排，贴底部安全区
+        let saveButton = makeSaveSheetButton(title: "保存图片")
+        saveButton.addTarget(self, action: #selector(saveSheetConfirmTapped), for: .touchUpInside)
+        let cancelButton = makeSaveSheetButton(title: "取消")
+        cancelButton.addTarget(self, action: #selector(dismissSaveSheet), for: .touchUpInside)
+
+        let stack = UIStackView(arrangedSubviews: [saveButton, cancelButton])
+        stack.axis = .vertical
+        stack.spacing = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        dim.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: dim.leadingAnchor, constant: 8),
+            stack.trailingAnchor.constraint(equalTo: dim.trailingAnchor, constant: -8),
+            stack.bottomAnchor.constraint(equalTo: dim.safeAreaLayoutGuide.bottomAnchor, constant: -8),
+            saveButton.heightAnchor.constraint(equalToConstant: 52),
+            cancelButton.heightAnchor.constraint(equalToConstant: 52),
+        ])
+
+        // 从底部滑入 + 遮罩淡入
+        stack.transform = CGAffineTransform(translationX: 0, y: 220)
+        UIView.animate(withDuration: 0.25, delay: 0, options: .curveEaseOut) {
+            dim.alpha = 1
+            stack.transform = .identity
+        }
+    }
+
+    /// 保存弹窗内单个按钮：白色/深色圆角卡片、居中文字。
+    private func makeSaveSheetButton(title: String) -> UIButton {
+        let button = UIButton(type: .system)
+        button.setTitle(title, for: .normal)
+        button.setTitleColor(.label, for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 17)
+        button.backgroundColor = UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0.16, alpha: 1) : .white }
+        button.layer.cornerRadius = 12
+        button.clipsToBounds = true
+        return button
+    }
+
+    @objc private func saveSheetConfirmTapped() {
+        dismissSaveSheet()
+        downloadTapped()
+    }
+
+    @objc private func dismissSaveSheet() {
+        guard let dim = saveSheetDim else { return }
+        saveSheetDim = nil
+        UIView.animate(withDuration: 0.2, delay: 0, options: .curveEaseIn) {
+            dim.alpha = 0
+        } completion: { _ in
+            dim.removeFromSuperview()
         }
     }
     
@@ -1618,6 +1720,8 @@ extension PhotoPreviewPageViewController: UIGestureRecognizerDelegate {
     }
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        // 保存弹窗弹出时，禁用下拉关闭，避免拖动遮罩把整页一起下拉
+        if saveSheetDim != nil { return false }
         // pan 手势只在图片没有缩放时才生效
         if gestureRecognizer == panGesture {
             guard let currentPhotoVC = currentPhotoVC else { return false }
