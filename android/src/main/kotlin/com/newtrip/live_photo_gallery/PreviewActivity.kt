@@ -114,7 +114,6 @@ class PreviewActivity : AppCompatActivity() {
 
     // 内联视频播放（ExoPlayer 生命周期已抽到 VideoPlaybackController）
     private val videoController by lazy { VideoPlaybackController(this) }
-    private var btnShare: android.widget.ImageView? = null
 
     private val selectedIds = mutableListOf<String>()
     private val editedPathByAssetId = mutableMapOf<String, String>()
@@ -178,6 +177,10 @@ class PreviewActivity : AppCompatActivity() {
         window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         setContentView(R.layout.activity_preview)
         overridePendingTransition(0, 0)
+        // 预览背景为深色：状态栏置透明并将图标改为白色（浅色图标），避免深底上黑图标看不清
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
+            .isAppearanceLightStatusBars = false   // false = 白色图标
         parseArgs()
         initViews()
         registerBackHandler()
@@ -196,36 +199,6 @@ class PreviewActivity : AppCompatActivity() {
             previewStage.handler?.removeCallbacksAndMessages(null)
         }
         videoController.release()
-    }
-
-    private fun setupShareButton() {
-        if (btnShare != null) return  // 防止重复添加（Activity 配置变更重建时）
-        val widthPx   = resources.getDimensionPixelSize(R.dimen.preview_share_button_width)
-        val heightPx  = resources.getDimensionPixelSize(R.dimen.preview_share_button_height)
-        val marginEndPx = resources.getDimensionPixelSize(R.dimen.preview_share_button_margin_end)
-        val paddingPx = resources.getDimensionPixelSize(R.dimen.preview_share_button_padding)
-        val shareBtn = android.widget.ImageView(this).apply {
-            layoutParams = FrameLayout.LayoutParams(widthPx, heightPx).also {
-                it.gravity = android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL
-                it.marginEnd = marginEndPx
-            }
-            setImageDrawable(
-                ContextCompat.getDrawable(this@PreviewActivity, R.drawable.ic_share)
-            )
-            imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
-            contentDescription = "分享"
-            setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
-            setOnClickListener { shareCurrentAsset() }
-        }
-        btnShare = shareBtn
-        (topBar as? ViewGroup)?.addView(shareBtn)
-    }
-
-    // 分享行为已抽到 PreviewShareController
-    private val shareController by lazy { PreviewShareController(this) }
-    private fun shareCurrentAsset() {
-        val asset = previewAssets.getOrNull(viewPager.currentItem) ?: return
-        shareController.share(asset)
     }
 
     // ──────────────────────────────────────────────
@@ -387,7 +360,9 @@ class PreviewActivity : AppCompatActivity() {
 
         applyWindowInsets()
 
-        // 纯预览模式：隐藏底部栏和选择按钮
+        // 纯预览模式：隐藏整条顶栏（关闭/计数/下载）、底部栏和选择按钮（微信式沉浸预览）
+        // 顶栏 GONE 后，进/退场动画里对 topBar.alpha 的赋值与 animate 仅是无害空操作（GONE 视图不绘制）
+        topBar.visibility    = if (showRadio) View.VISIBLE else View.GONE
         bottomBar.visibility = if (showRadio) View.VISIBLE else View.GONE
         btnSelect.visibility = if (showRadio) View.VISIBLE else View.GONE
 
@@ -493,7 +468,6 @@ class PreviewActivity : AppCompatActivity() {
         updateOriginalButton()
         prepareEnterAnimationState()
         scheduleEnterAnimation()
-        setupShareButton()
     }
 
     private fun prepareEnterAnimationState() {
@@ -1454,10 +1428,19 @@ class PreviewActivity : AppCompatActivity() {
                 } else null
                 playBtn.setOnClickListener(clickHandler)
                 zoomView.setOnClickListener(clickHandler)
+                // 视频页保留原有播放点击，不启用单击关闭
+                zoomView.onSingleTap = null
             } else {
                 this.currentPlayUri = null
                 playBtn.setOnClickListener(null)
                 zoomView.setOnClickListener(null)
+                // 图片页：仅预览模式(!showRadio)单击关闭预览（微信式）；选择模式不启用。
+                // 每次 bind 都显式赋值，复用 holder 不会残留旧闭包。
+                zoomView.onSingleTap = if (!showRadio) {
+                    { finishWithSlideDown() }
+                } else {
+                    null
+                }
             }
         }
 

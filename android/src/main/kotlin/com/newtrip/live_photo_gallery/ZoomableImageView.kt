@@ -45,6 +45,13 @@ class ZoomableImageView @JvmOverloads constructor(
     val currentScale: Float
         get() = getMatrixScale()
 
+    /**
+     * 单击确认回调：预览模式下用于「单击图片关闭预览」。
+     * onSingleTapConfirmed 会等过双击超时窗口才触发，故不会与双击放大冲突。
+     * 默认 null（不处理单击）；由 PreviewViewHolder.bind 按图片/视频、预览/选择模式设置或复位。
+     */
+    var onSingleTap: (() -> Unit)? = null
+
     private val scaleDetector = ScaleGestureDetector(
         context,
         object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -87,6 +94,13 @@ class ZoomableImageView @JvmOverloads constructor(
             override fun onDown(e: MotionEvent): Boolean {
                 // 新一次触摸开始，取消正在进行的惯性滑动
                 cancelFling()
+                return true
+            }
+
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                // 单击确认（已过双击超时窗口）：触发外部回调，不与双击放大冲突。
+                // 仅在未放大（缩放归位）时触发——与下拉关闭一致，避免放大看细节时误触退出。
+                if (currentScale <= MIN_SCALE + 0.01f) onSingleTap?.invoke()
                 return true
             }
 
