@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:live_photo_gallery/live_photo_gallery.dart';
 
@@ -7,8 +8,37 @@ import 'package:live_photo_gallery/live_photo_gallery.dart';
 ///
 /// 全部用**网络资源**（大陆可达优先：视频取自 runoob / 阿里云，图片取自 picsum + 百度域）。
 /// 如某条 URL 在你的网络下打不开，直接改 [_R] 里的常量即可 —— 顺带也能看坏链兜底表现。
-class PostFeedPage extends StatelessWidget {
+class PostFeedPage extends StatefulWidget {
   const PostFeedPage({super.key});
+
+  @override
+  State<PostFeedPage> createState() => _PostFeedPageState();
+}
+
+class _PostFeedPageState extends State<PostFeedPage> {
+  StreamSubscription<DownloadResult>? _downloadSub;
+
+  @override
+  void initState() {
+    super.initState();
+    // 长按网络图 →「保存图片」后，native 通过 onDownloadResult 回推结果，这里弹提示。
+    _downloadSub = LivePhotoGallery.onDownloadResult.listen((r) {
+      if (!mounted) return;
+      final msg = switch (r) {
+        DownloadSuccess() => '已保存到相册',
+        DownloadFailure(:final errorMessage) => '保存失败：$errorMessage',
+      };
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _downloadSub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -184,6 +214,8 @@ class _PostCard extends StatelessWidget {
           showRadio: false,
           autoPlayVideo: post.hasVideo,
         ),
+        // 允许保存网络图：预览里长按网络图会弹「保存图片 / 取消」。
+        showDownloadButton: true,
       );
     } on LivePhotoException catch (e) {
       if (!pageContext.mounted) return;
