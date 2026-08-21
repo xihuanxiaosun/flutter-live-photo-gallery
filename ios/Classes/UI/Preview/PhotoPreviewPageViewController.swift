@@ -754,7 +754,7 @@ class PhotoPreviewPageViewController: UIViewController {
         return label
     }()
 
-    /// 分享按钮：始终显示（点击后弹出系统分享面板）
+    /// 分享按钮：现两种模式均隐藏（见 updateUI）；视图与 PreviewShareController 保留待用。
     private lazy var shareButton: UIButton = {
         var cfg = UIButton.Configuration.plain()
         cfg.image = UIImage(
@@ -826,7 +826,7 @@ class PhotoPreviewPageViewController: UIViewController {
     }()
 
     // ── 底部页码指示器 ──────────────────────────────────────────────
-    // bar 的兄弟视图（不在 topBar/bottomBar 内），底部居中，随 bar 一起淡入淡出。
+    // bar 的兄弟视图（不在 topBar/bottomBar 内），底部居中；常驻显示，不随 bar 显隐淡出。
     // ≤8 张用一排小圆点，>8 张用「n / total」胶囊；二选一，按数量在构建时确定。
 
     /// 底部页码圆点视图（仅 2...8 张时非空；更多或视频页时为空/隐藏）
@@ -896,13 +896,19 @@ class PhotoPreviewPageViewController: UIViewController {
         self.saveAlbumName = saveAlbumName
         self.completion = completion
         super.init(nibName: nil, bundle: nil)
+        // 预览背景两种模式皆为深色，状态栏固定用浅色内容（白色图标）。
+        // 本 VC 以 .custom 呈现，需显式接管状态栏外观（否则沿用呈现方的样式）。
+        modalPresentationCapturesStatusBarAppearance = true
     }
-    
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-    
+
     // MARK: - Lifecycle
+
+    /// 预览背景恒为深色（两种模式一致），状态栏统一用浅色内容（白色图标）。
+    override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -913,6 +919,9 @@ class PhotoPreviewPageViewController: UIViewController {
         setupUI()
         setupGestures()
         updateUI()
+
+        // 自定义转场下由本 VC 接管状态栏外观，主动刷新一次以应用 .lightContent
+        setNeedsStatusBarAppearanceUpdate()
     }
     
     private func setupPageViewController() {
@@ -1053,8 +1062,10 @@ class PhotoPreviewPageViewController: UIViewController {
                                                        constant: -(barContentH / 2)),
         ])
 
-        // 纯预览模式（showRadio: false）：隐藏整个底部栏（原图 + 完成按钮均无意义）
-        // 同时隐藏顶部的选择按钮；仅保留顶部关闭按钮和计数
+        // 纯预览模式（showRadio: false）：整条顶栏 + 整个底部栏一并隐藏（微信式沉浸预览）。
+        // 顶栏（关闭 / 计数 / 分享 / 下载）整体隐去，改为单击图片即关闭（见 handleBarToggleTap）；
+        // 底部栏（原图 + 完成）在此模式下无意义。选择模式两栏均保留。
+        topBar.isHidden       = !config.showRadio
         selectButton.isHidden = !config.showRadio
         bottomBar.isHidden    = !config.showRadio
 
@@ -1073,7 +1084,7 @@ class PhotoPreviewPageViewController: UIViewController {
             .constraint(equalTo: downloadButton.leadingAnchor, constant: -4)
             .isActive = true
 
-        // ── 底部页码指示器（bar 的兄弟视图，随 bar 一起淡入淡出）──────────
+        // ── 底部页码指示器（bar 的兄弟视图，常驻显示，不随 bar 淡出）──────────
         view.addSubview(pageIndicator)
         // 选择模式有底部栏时抬到栏上方，避免与其重叠（对齐视频控制条的 62/12 内边距）
         let indicatorBottomInset: CGFloat = config.showRadio ? 62 : 12
@@ -1121,8 +1132,8 @@ class PhotoPreviewPageViewController: UIViewController {
         if !bottomBar.isHidden {
             bottomBar.alpha = alpha
         }
-        // 页码指示器随 bar 一起淡入淡出（isHidden 时设 alpha 无副作用，仍保持隐藏）
-        pageIndicator.alpha = alpha
+        // 底部圆点常驻：不随 bar 显隐淡出（alpha 保持 1）；显隐规则仍由 updatePageIndicator 决定。
+        // 仅 present/dismiss 会随整个 pageViewController.view 一起动画，属预期。
     }
 
     private func hideBarsForInteractiveDismiss() {
@@ -1133,6 +1144,8 @@ class PhotoPreviewPageViewController: UIViewController {
             options: [.beginFromCurrentState, .curveEaseOut, .allowUserInteraction]
         ) {
             self.setBarsAlpha(0)
+            // 圆点平时常驻，但下拉关闭时跟随一起淡出，避免图片飞走时底部还留着圆点
+            self.pageIndicator.alpha = 0
         }
     }
 
@@ -1140,6 +1153,7 @@ class PhotoPreviewPageViewController: UIViewController {
         let targetAlpha: CGFloat = barsVisibleBeforeInteractiveDismiss ? 1 : 0
         let animations = {
             self.setBarsAlpha(targetAlpha)
+            self.pageIndicator.alpha = 1   // 取消下拉后圆点恢复常驻
         }
 
         guard animated else {
@@ -1210,8 +1224,9 @@ class PhotoPreviewPageViewController: UIViewController {
             downloadButton.isHidden = true
         }
 
-        // 分享按钮：始终可见（无论本地/网络）
-        shareButton.isHidden = false
+        // 分享按钮：两种模式均不显示——预览模式整条顶栏已隐藏，选择模式也去掉分享入口。
+        // 视图与 PreviewShareController 保留但常隐（dead-but-harmless），便于日后需要时恢复。
+        shareButton.isHidden = true
 
         // 裁剪按钮：仅在“选择模式(showRadio=true)”且当前资源为 image 时显示
         let isImageAsset: Bool = {
@@ -1356,6 +1371,19 @@ class PhotoPreviewPageViewController: UIViewController {
     }
 
     @objc private func handleBarToggleTap(_ gesture: UITapGestureRecognizer) {
+        // 预览模式（showRadio=false）：顶/底栏已整体隐藏，单击图片即关闭预览（微信式），
+        // 走与关闭按钮相同的路径（dismiss + completion）。视频播放键 / 控制条 / 分享等 UIControl
+        // 已由 gestureRecognizer(_:shouldReceive:) 排除，双击缩放由 shouldRequireFailureOf 保证不误触。
+        if !config.showRadio {
+            // 缩放放大时不关闭：与下拉关闭保持一致（下拉仅在 zoomScale==1 时生效），
+            // 避免用户放大看细节时单击误触退出。
+            guard (currentPhotoVC?.scrollView.zoomScale ?? 1.0) <= 1.0 else { return }
+            // 视频页单击不关闭：交给播放键/控制条处理（与 Android 一致，避免看视频时误关）。
+            if currentPhotoVC?.asset.isVideo == true { return }
+            closeTapped()
+            return
+        }
+
         // 点击到可见 bar 区域时不触发（让按钮正常响应）
         let loc = gesture.location(in: view)
         let inTop = topBar.frame.contains(loc)
